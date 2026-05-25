@@ -1,0 +1,3207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HELIX-64 — Future OS Machine Language v4.0 · Multi-Node LLM Architecture</title>
+<style>
+  /* ─── HELIX-64 Disassembler Theme ─── */
+  :root {
+    --bg:        #080a0e;
+    --bg2:       #0c0e14;
+    --bg3:       #111318;
+    --border:    #181c28;
+    --border2:   #20253a;
+    --dim:       #323856;
+    --muted:     #556070;
+    --text:      #b8c2d8;
+    --bright:    #d8e0f2;
+    --accent:    #5a6aaa;
+
+    /* Instruction type colors — desaturated, low-contrast categorical tints */
+    --c-alu:     #5a6a9a;   /* ALU / arithmetic  — dusty blue      */
+    --c-mem:     #3a7a6a;   /* Memory load/store — muted teal      */
+    --c-branch:  #8a6a38;   /* Branch / jump     — dark ochre      */
+    --c-sys:     #6a52a0;   /* System / OS ops   — dim indigo      */
+    --c-atomic:  #8a4e48;   /* Atomic primitives — dull brick      */
+    --c-cache:   #42784a;   /* TLB / cache ops   — forest green    */
+    --c-graph:   #3a8898;   /* Graph ops         — slate teal      */
+    --c-ai:      #7a4880;   /* AI inference ops  — dim plum        */
+    --c-dist:    #4a7a50;   /* Distributed/multi-node ops — moss   */
+    --c-cap:     #7a6830;   /* Capability ops    — antique gold    */
+    --c-label:   #d8e0f2;
+    --c-comment: #2e3858;
+    --c-addr:    #232a48;
+    --c-hex:     #161c38;
+    --c-hextext: #405070;
+
+    --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    --sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+
+    /* 2026 spacing tokens */
+    --row-px: 13px;
+    --radius: 3px;
+    --topbar-h: 52px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.55;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── LAYOUT ─── */
+  .page { max-width: 1400px; margin: 0 auto; padding: 0; }
+
+  .topbar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .topbar .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .topbar .subtitle {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.75;
+  }
+  .topbar .badge {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 9px;
+    border-radius: var(--radius);
+    opacity: 0.8;
+  }
+
+  .body-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: calc(100vh - var(--topbar-h));
+    overflow: hidden;
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 16px;
+  }
+
+  .sidebar-title {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .reg-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+  .reg-row {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    padding: 2px 0;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .reg-name { color: var(--c-alu); min-width: 32px; }
+  .reg-alias { color: var(--muted); font-size: 10px; }
+
+  .format-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    margin-bottom: 8px;
+  }
+  .format-row {
+    display: flex;
+    margin-bottom: 3px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .fmt-field {
+    text-align: center;
+    padding: 3px 2px;
+    font-size: 9px;
+    border-right: 1px solid var(--bg2);
+    color: #fff;
+  }
+  .fmt-field:last-child { border-right: none; }
+  .f-major  { background: #1a2850; flex: 4; }
+  .f-minor  { background: #16304a; flex: 4; }
+  .f-rd     { background: #183828; flex: 5; }
+  .f-rs1    { background: #183828; flex: 5; }
+  .f-rs2    { background: #183828; flex: 5; }
+  .f-flags  { background: #30221a; flex: 3; }
+  .f-aux    { background: #30221a; flex: 6; }
+  .f-imm14  { background: #2e2018; flex: 14; }
+  .f-imm19  { background: #2e2018; flex: 19; }
+  .f-bits   { color: var(--dim); font-size: 8px; display: block; margin-top: 2px; }
+
+  .opcode-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .opcode-table td {
+    padding: 2px 4px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .op-hex { color: var(--c-hextext); min-width: 28px; }
+  .op-name { font-weight: 600; }
+  .op-desc { color: var(--muted); font-size: 9px; }
+
+  .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .nav-list { list-style: none; }
+  .nav-list li a {
+    display: block;
+    padding: 5px 8px;
+    color: var(--muted);
+    text-decoration: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    border-radius: 3px;
+    transition: background 0.1s, color 0.1s;
+  }
+  .nav-list li a:hover {
+    background: var(--bg3);
+    color: var(--bright);
+  }
+  .nav-list li a .nav-addr {
+    float: right;
+    color: var(--c-addr);
+    font-size: 10px;
+    filter: brightness(1.5);
+  }
+
+  /* ─── MAIN LISTING ─── */
+  .listing {
+    overflow-y: auto;
+    background: var(--bg);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+    padding-bottom: 80px;
+  }
+
+  .asm-section-header {
+    position: sticky;
+    top: -1px;
+    background: var(--bg3);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 22px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    z-index: 5;
+    scroll-margin-top: 48px;
+  }
+  .asm-section-header .fn-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bright);
+    letter-spacing: 0.01em;
+  }
+  .asm-section-header .fn-addr {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+  .asm-section-header .fn-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: auto;
+    opacity: 0.8;
+  }
+
+  .asm-block-comment {
+    padding: 10px 22px 4px 22px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--c-comment);
+    filter: brightness(2.8);
+    line-height: 1.65;
+  }
+
+  .asm-row {
+    display: grid;
+    grid-template-columns: 104px 112px 264px 1fr;
+    align-items: baseline;
+    padding: 1.5px 0;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    transition: background 0.08s;
+    cursor: default;
+  }
+  .asm-row:hover { background: rgba(255,255,255,0.022); }
+
+  .asm-addr {
+    padding: 0 8px 0 22px;
+    color: var(--c-hextext);
+    font-size: 11px;
+    opacity: 0.65;
+    user-select: none;
+    letter-spacing: 0.02em;
+  }
+
+  .asm-bytes {
+    color: var(--c-hextext);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    opacity: 0.55;
+    padding-right: 8px;
+  }
+
+  .asm-mnemonic {
+    padding: 0 12px;
+    border-left: 2px solid transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .asm-mnemonic.t-alu    { border-color: var(--c-alu);    }
+  .asm-mnemonic.t-mem    { border-color: var(--c-mem);    }
+  .asm-mnemonic.t-branch { border-color: var(--c-branch); }
+  .asm-mnemonic.t-sys    { border-color: var(--c-sys);    }
+  .asm-mnemonic.t-atomic { border-color: var(--c-atomic); }
+  .asm-mnemonic.t-cache  { border-color: var(--c-cache);  }
+  .asm-mnemonic.t-graph  { border-color: var(--c-graph);  }
+  .asm-mnemonic.t-ai     { border-color: var(--c-ai);     }
+  .asm-mnemonic.t-dist   { border-color: var(--c-dist);   }
+  .asm-mnemonic.t-cap    { border-color: var(--c-cap);    }
+
+  .mn  { font-weight: 700; margin-right: 6px; }
+  .mn.t-alu    { color: var(--c-alu);    }
+  .mn.t-mem    { color: var(--c-mem);    }
+  .mn.t-branch { color: var(--c-branch); }
+  .mn.t-sys    { color: var(--c-sys);    }
+  .mn.t-atomic { color: var(--c-atomic); }
+  .mn.t-cache  { color: var(--c-cache);  }
+  .mn.t-graph  { color: var(--c-graph);  }
+  .mn.t-ai     { color: var(--c-ai);     }
+  .mn.t-dist   { color: var(--c-dist);   }
+  .mn.t-cap    { color: var(--c-cap);    }
+
+  .reg  { color: #8a7848; }
+  .imm  { color: #7a5048; }
+  .sym  { color: #4a7888; }
+  .punct { color: var(--dim); }
+
+  .asm-comment {
+    color: var(--c-comment);
+    font-size: 11px;
+    filter: brightness(2.6);
+    padding-left: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .asm-label-row {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--c-mem);
+    padding: 8px 22px 2px 108px;
+    opacity: 0.65;
+  }
+
+  .asm-blank { height: 14px; }
+
+  /* ─── TOOLTIP ─── */
+  .decode-panel {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    left: 300px;
+    background: var(--bg3);
+    border-top: 1px solid var(--border2);
+    padding: 8px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    align-items: center;
+    z-index: 20;
+  }
+  .decode-panel .dp-label { color: var(--muted); margin-right: 4px; }
+  .decode-panel .dp-val   { color: var(--bright); }
+  .decode-panel .dp-bits  { color: var(--c-hextext); filter: brightness(1.5); }
+
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ─── SEARCH BOX ─── */
+  .search-wrap {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-box {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 6px 10px 6px 28px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    outline: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7599' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 9px center;
+    transition: border-color 0.15s;
+  }
+  .search-box:focus { border-color: var(--accent); }
+  .search-box::placeholder { color: var(--dim); }
+  .search-count { font-size: 9px; color: var(--dim); margin-top: 4px; text-align: right; font-family: var(--mono); }
+
+  /* ─── AI STATUS DOT ─── */
+  .ai-status {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px; color: var(--c-ai);
+    margin-left: 12px;
+  }
+  .ai-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--c-ai);
+    box-shadow: 0 0 6px var(--c-ai);
+    animation: ai-pulse 2s ease-in-out infinite;
+  }
+  @keyframes ai-pulse {
+    0%,100% { opacity: 1; box-shadow: 0 0 6px var(--c-ai); }
+    50%      { opacity: 0.4; box-shadow: 0 0 2px var(--c-ai); }
+  }
+
+  /* ─── GRAPH VISUALIZATION PANEL ─── */
+  .graph-panel {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  #taskGraph {
+    width: 100%; height: 160px;
+    border-radius: 4px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    cursor: grab;
+  }
+  #taskGraph:active { cursor: grabbing; }
+  .graph-legend {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 9px; font-family: var(--mono);
+  }
+  .gl-item { display: flex; align-items: center; gap: 3px; color: var(--muted); }
+  .gl-dot  { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* ─── COPY TOAST ─── */
+  .copy-toast {
+    position: fixed; bottom: 60px; right: 20px;
+    background: var(--bg3); border: 1px solid var(--c-graph);
+    color: var(--c-graph); font-family: var(--mono); font-size: 11px;
+    padding: 6px 14px; border-radius: 4px; z-index: 100;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .copy-toast.show { opacity: 1; }
+
+  /* ─── KEYBOARD HINT ─── */
+  .kbd-hint {
+    display: flex; gap: 10px; flex-wrap: wrap; padding: 8px 16px;
+    border-bottom: 1px solid var(--border); font-size: 9px; color: var(--dim);
+    font-family: var(--mono);
+  }
+  .kbd { background: var(--bg3); border: 1px solid var(--border2); padding: 1px 4px; border-radius: 2px; color: var(--muted); }
+
+  /* ─── ACTIVE / FOCUSED ROW ─── */
+  .asm-row.focused  { background: rgba(62,200,232,0.05); outline: none; }
+  .asm-row.active   { background: rgba(124,143,224,0.09); }
+  .asm-row.search-match { background: rgba(196,93,184,0.06); }
+  .asm-row.search-match .asm-comment { filter: brightness(3.8); }
+
+  /* ─── DECODE PANEL UPGRADE ─── */
+  .dp-group { display: flex; flex-direction: column; gap: 2px; min-width: 80px; }
+  .dp-group .dp-label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+  .dp-group .dp-val   { font-size: 12px; color: var(--bright); }
+  .dp-group .dp-bits  { font-size: 10px; color: var(--c-hextext); filter: brightness(1.5); }
+  .dp-type-badge {
+    padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 700;
+    border: 1px solid currentColor; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ─── TOP BAR ─── -->
+<div class="topbar">
+  <div>
+    <div class="logo">⬡ HELIX-64</div>
+    <div class="subtitle">Future Operating System Machine Language — v4.0 · AI-IS-OS · Multi-Node LLM · Distributed NRF · Modular Training · Graph-Accelerated · Capability-Sealed</div>
+  </div>
+  <div class="badge">32-bit fixed-width instr · 64-bit regs (×32) · Capability-based security · HW context switch · GRAPH/AI/DIST Extensions · Distributed NRF · Versioned Weight Shards · Preemptible INFER_STEP · v4.0</div>
+</div>
+
+<div class="body-grid">
+
+<!-- ─── SIDEBAR ─── -->
+<div class="sidebar">
+
+  <!-- ISA Overview -->
+  <div class="sidebar-section">
+    <div class="sidebar-title">ISA Design Principles</div>
+    <div style="font-size:11px; color:var(--muted); line-height:1.7;">
+      HELIX-64 is a <strong style="color:var(--text)">64-bit RISC architecture</strong> with <strong style="color:var(--text)">fixed 32-bit instruction words</strong>, designed for a new class of system where
+      <strong style="color:var(--c-ai)">the AI model is the operating system</strong> — not a process running on top of one.
+      There is no traditional <em>userspace</em> kernel API, process scheduler, or hierarchical filesystem. Every abstraction is
+      <em>generated on demand</em> by the resident model and dissolved when no longer needed.
+      <br><br>
+      At boot, firmware initializes bare metal, then loads model weights directly into memory.
+      A single prompt interface appears. From that point, all software — text editors, drivers,
+      UI surfaces — is <strong style="color:var(--text)">materialized by inference and executed natively</strong> as HELIX-64 instructions.
+      No compiler. No runtime. No framework between the model and the metal.
+      <br><br>
+
+      <strong style="color:var(--c-graph)">Nodes replace the filesystem abstraction.</strong>
+      A traditional filesystem solves three problems: where data lives, how you find it again,
+      and how programs share it. Nodes solve all three differently — and the filesystem becomes
+      an <em>implementation detail beneath the semantic retrieval layer</em>, not a user-facing concept.
+      Persistence, indexing, deduplication, snapshotting, versioning, and transactional consistency
+      all exist — they are simply not exposed as directory trees or file paths.
+      Precision-critical exact data (cryptographic keys, audit records, verified hashes) lives in
+      the hardware-backed append-only enclave ledger, addressed by content hash.
+      Deterministic recovery is guaranteed: SAMPLE #ARGMAX replay reproduces any generated
+      construct byte-for-byte on demand, standing in for "saved files."
+      <em>How you find it</em> — not by path, but by <strong style="color:var(--text)">semantic description</strong>.
+      "The budget doc from last Tuesday" retrieves more naturally than
+      <span style="color:var(--c-hextext)">/home/user/documents/budget_draft_v3_final.docx</span> ever did.
+      <em>How programs share it</em> — there are no isolated programs. Everything is generated
+      from the same substrate. Sharing is structurally simple because there is
+      one inference substrate, not many competing processes with separate address spaces.
+      <br><br>
+
+      <strong style="color:var(--c-ai)">Nodes replace executables.</strong>
+      A traditional <span style="color:var(--c-hextext)">.exe</span> is frozen compiled code — it does exactly one thing,
+      the way it was written at build time, forever.
+      A node is a <em>capability</em> — it knows how to generate text-editing behavior,
+      or networking behavior, and adapts that behavior to context, hardware, and the user's
+      learned preferences. You don't <em>run</em> a text editor. You
+      <strong style="color:var(--text)">invoke the text-editing capability</strong> and the system
+      manifests whatever form of that is most useful right now.
+      The node IS the program, the data, and the user's relationship with both — simultaneously.
+      <br><br>
+
+      <strong style="color:var(--c-graph)">Modular Node Memory:</strong> rather than one monolithic weight file, the model's knowledge is stored
+      as a graph of <em>small, domain-specific weight nodes</em> — each covering a narrow capability.
+      Nodes are loaded, hot-swapped, and continuously fine-tuned in the background as the user
+      interacts. The first time a capability is invoked, the relevant node is built and cached.
+      The second time it is <strong style="color:var(--text)">near-instant</strong> — retrieved from NPU SRAM.
+      Over time the system grows more capable and more personal without ever requiring a full retrain.
+      This is how the OS <em>learns and grows with its user</em>.
+      <br><br>
+
+      <strong style="color:var(--c-atomic)">Two-tier data model:</strong> nodes handle the vast majority of data — documents, preferences,
+      behaviors, knowledge — which is inherently <em>semantic</em>. The thin remaining slice of
+      <em>precision-critical</em> exact data (cryptographic keys, financial audit records,
+      verified hashes) is handled by a hardware-backed
+      <strong style="color:var(--text)">secure enclave layer</strong> that the model reads and writes atomically.
+      This is not a filesystem — it has no hierarchy, no paths, no permissions model.
+      It is a flat, append-only ledger the model references by content hash.
+      <br><br>
+
+      <strong style="color:var(--c-dist)">v4.0 — Multi-Node LLM Architecture:</strong> single-socket NPUs cannot house frontier-scale models.
+      v4.0 introduces the <strong style="color:var(--text)">Distributed Node Register File (DNRF)</strong> — NRF slots that
+      transparently reference weight shards on remote nodes via RDMA. A new DIST ISA extension (Major 0xF)
+      adds <strong style="color:var(--c-dist)">NODE_FETCH</strong>, <strong style="color:var(--c-dist)">NODE_SYNC</strong>,
+      <strong style="color:var(--c-dist)">SHARD_COMMIT</strong>, and <strong style="color:var(--c-dist)">VERSION_FENCE</strong> —
+      enabling modular, per-layer training updates without stopping inference on any node.
+      The <strong style="color:var(--text)">NODE_TOPO CSR bank</strong> (0xE0–0xEF) maps inter-node latency, bandwidth, and topology,
+      letting the graph scheduler place shards to minimize critical-path latency across the fabric.
+      <strong style="color:var(--c-dist)">INFER_STEP is now preemptible</strong> via STEP_CHECKPOINT — no more multi-millisecond IRQ blackout windows.
+      <br><br>
+
+      <strong style="color:var(--c-cap)">v4.0 — Capability Descriptor Format:</strong> CAP (R28) now holds a
+      <strong style="color:var(--text)">64-bit sealed capability token</strong>:
+      bits[63:48]=ring level, bits[47:32]=domain_id (which node family owns this cap),
+      bits[31:16]=permission mask (READ/WRITE/EXEC/AI_INVOKE/DIST_FETCH/SHARD_COMMIT/ENCLAVE_RW),
+      bits[15:0]=generation counter (monotonic; prevents replayed sealed caps from being valid).
+      CAP_SEAL and CAP_UNSEAL operate on this full structure — not just a ring bit.
+      CAP_CHECK verifies all fields atomically and sets the processor flag register on pass/fail.
+      <span style="color:var(--text)">SAMPLE #ARGMAX</span> deterministic replay covers everything else —
+      any generated construct reproduced byte-for-byte on demand, standing in for "saved files."
+      <br><br>
+
+      <strong style="color:var(--c-sys)">Entropy-based identity — the security model.</strong>
+      Each HELIX-64 instance is cryptographically unique, formed from three entropy sources fused
+      at first boot and baked permanently into NRF[0]:
+      <em>hardware entropy</em> (silicon PUF, bus timing variance, thermal noise),
+      <em>behavioral entropy</em> (the user's interaction patterns accumulated over time), and
+      <em>node weight fingerprint</em> (the specific configuration of learned weight deltas in NRF[2]).
+      The result is an identity that <strong style="color:var(--text)">cannot exist anywhere else in the same form</strong>.
+      Exfiltrating the weights is expensive and low-yield: they are meaningless without the
+      hardware entropy that shaped them, the behavioral context that personalizes them, and the
+      silicon PUF keys that decrypt them. This architecture
+      <strong style="color:var(--text)">dramatically raises attacker cost</strong>,
+      <strong style="color:var(--text)">reduces replay attack usefulness</strong>,
+      <strong style="color:var(--text)">constrains weight portability to near-zero</strong>, and
+      <strong style="color:var(--text)">binds identity to hardware entropy</strong> rather than to secrets that can be transmitted.
+      The attack surface does not vanish — it collapses to physical access and supply-chain,
+      which are fundamentally smaller and more tractable problems than today's
+      remote-exploit and credential-theft landscape.
+      Every OS instance is unique to its machine and its user.
+      No two are alike. No stolen weight file is useful without its hardware twin.<br><br>
+
+      Hardware natively supports <strong style="color:var(--text)">atomic context switches</strong>,
+      <strong style="color:var(--text)">capability sealing</strong>,
+      <strong style="color:var(--text)">TLB management</strong>,
+      <strong style="color:var(--c-graph)">graph-native dependency resolution</strong>, and
+      <strong style="color:var(--c-ai)">transformer inference primitives</strong> — all as single instructions,
+      designed for the day dedicated photonic or neuromorphic silicon makes real-time
+      generative OS response indistinguishable from instantaneous.
+      <br><br>
+
+      <strong style="color:var(--c-alu)">v3.0 additions:</strong>
+      <span style="color:var(--text)">INFER renamed to INFER_STEP</span> — now explicitly a single-layer microcode loop (EMBED→LAYERNORM→QKV MATMUL→ATTN→FFN→residual), not a monolithic op;
+      <span style="color:var(--c-ai)">GENERATE</span> macro-instruction (AI major 0xD, minor 0xF) — full N-token generation loop over INFER_STEP, output tensor handle returned in Rd;
+      <span style="color:var(--text)">Format JR</span> added — disambiguates register-indirect CALL from PC-relative CALLL (Format J); all CALL encodings now consistent;
+      <span style="color:var(--text)">NOP opcode 0x0F000000</span> — explicit dedicated NOP (Maj=0x0 Min=0xF); pipeline hint, no side-effects;
+      <span style="color:var(--text)">TRF upgraded 256→512-bit</span> — each slot is a tensor descriptor (base ptr + shape + stride + dtype + layout + quant_scale_idx);
+      <span style="color:var(--text)">Tensor memory semantics</span> — ROW_MAJOR/TILED_8×8/PACKED layouts; FENCE_AI sync; NPU scoreboard; bandwidth targets; quantization path;
+      <span style="color:var(--text)">Two-tier generation model</span> — Stable Compiled Layer (fixed assembly) / Generated Orchestration Layer (cached node outputs) / Adaptive Surface Layer (live GENERATE);
+      <span style="color:var(--text)">Security model reframed</span> — attacker cost, replay usefulness reduction, weight portability constraints, hardware entropy binding;
+      <span style="color:var(--text)">Filesystem framing upgraded</span> — "filesystem as implementation detail beneath semantic retrieval" — persistence/indexing/versioning/recovery all exist at enclave+node layer.<br>
+      <strong style="color:var(--c-dist)">v4.0 additions:</strong>
+      <span style="color:var(--c-dist)">DIST ISA (Major 0xF)</span> — 10 new ops: NODE_FETCH, NODE_SYNC, SHARD_COMMIT, VERSION_FENCE, TOPO_QUERY, SHARD_PLACE, REPLICA_PROMOTE, VERSION_COMMIT, INFER_START, INFER_END;
+      <span style="color:var(--text)">Distributed NRF (DNRF)</span> — NRF slots now carry 128-bit descriptors: weight ptr + version + type (LOCAL/REMOTE_SHARD/REPLICATED) + shard_id + node_id + epoch; NRF[3–5] = remote shard refs, NRF[6–7] = fetch staging;
+      <span style="color:var(--text)">Version snapshot protocol</span> — INFER_START pins GLOBAL_VERSION to CSR[0xD5]; inference is coherent across nodes; training deltas apply to shadow version; VERSION_COMMIT makes updates visible at next INFER_START boundary;
+      <span style="color:var(--c-ai)">STEP_CHECKPOINT (AI 0xE)</span> — preemptible INFER_STEP; cooperative yield point eliminates 500μs–2ms IRQ blackout; TRF spill to 4 KB per-task NPU resume buffer;
+      <span style="color:var(--text)">GENERATE_CANCEL (CSR[0xDA])</span> — write nonzero to abort a running GENERATE macro; drains to nearest STEP_CHECKPOINT, returns partial CANCELLED tensor handle;
+      <span style="color:var(--text)">Modular LoRA training</span> — _shard_trainer applies rank-r delta (W_new = W_base + α·A×B) to any single layer without stopping inference on any node;
+      <span style="color:var(--text)">NODE_TOPO CSR bank (0xE0–0xEF)</span> — per-node latency table, bandwidth, topology type; used by _graph_scheduler for topology-aware shard placement;
+      <span style="color:var(--text)">REPLICA_PROMOTE</span> — hardware failover: demotes failed remote node, promotes best REPLICATED shard to PRIMARY in ≤1 cycle;
+      <span style="color:var(--c-cap)">Capability descriptor v4.0</span> — CAP (R28) is now a full 64-bit sealed token: ring[63:48] + domain_id[47:32] + permission_mask[31:16] (READ/WRITE/EXEC/AI_INVOKE/DIST_FETCH/SHARD_COMMIT/ENCLAVE_RW) + generation_counter[15:0]; CAP_CHECK sets processor flag for BF/BNF privilege gates;
+      <span style="color:var(--text)">Three new kernel functions</span> — _dist_shard_fetch (0xFFFF0300), _version_manager (0xFFFF0340), _shard_trainer (0xFFFF0380).<br>
+      <strong style="color:var(--c-alu)">v2.1 additions:</strong> <span style="color:var(--text)">LUI/AUIPC</span> (Major 0xE) for 64-bit constant synthesis;
+      <span style="color:var(--text)">BF/BNF</span> branch-on-flag for CAP_CHECK and overflow paths;
+      <span style="color:var(--text)">MOV/LI</span> assembler pseudo-instructions;
+      <span style="color:var(--text)">SAMPLE #ARGMAX</span> deterministic replay mode for saved-state equivalence;
+      <span style="color:var(--text)">ring-0 enforcement</span> on GEDGE_ADD/GNODE_ALLOC to prevent user-space cycle injection;
+      <span style="color:var(--c-ai)">NODE_LOAD / NODE_SWAP / NODE_COMMIT</span> for hot-swapping and persisting weight node modules at runtime (NODE_COMMIT = STEP_CHECKPOINT with AUX=1 — persist NRF[2] deltas to enclave).
+    </div>
+  </div>
+
+  <!-- Instruction Formats -->
+  <div class="sidebar-section">
+    <div class="sidebar-title">Instruction Encoding (32-bit word, 64-bit data)</div>
+
+    <div style="font-size:9px; color:var(--muted); margin-bottom:4px;">Format R — Register-to-Register</div>
+    <div class="format-box">
+      <div class="format-row">
+        <div class="fmt-field f-major">MAJ<br><span class="f-bits">31:28</span></div>
+        <div class="fmt-field f-minor">MIN<br><span class="f-bits">27:24</span></div>
+        <div class="fmt-field f-rd">Rd<br><span class="f-bits">23:19</span></div>
+        <div class="fmt-field f-rs1">Rs1<br><span class="f-bits">18:14</span></div>
+        <div class="fmt-field f-rs2">Rs2<br><span class="f-bits">13:9</span></div>
+        <div class="fmt-field f-flags">FLG<br><span class="f-bits">8:6</span></div>
+        <div class="fmt-field f-aux">AUX<br><span class="f-bits">5:0</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:9px; color:var(--muted); margin-bottom:4px;">Format I — Register + 14-bit Immediate</div>
+    <div class="format-box">
+      <div class="format-row">
+        <div class="fmt-field f-major">MAJ<br><span class="f-bits">31:28</span></div>
+        <div class="fmt-field f-minor">MIN<br><span class="f-bits">27:24</span></div>
+        <div class="fmt-field f-rd">Rd<br><span class="f-bits">23:19</span></div>
+        <div class="fmt-field f-rs1">Rs1<br><span class="f-bits">18:14</span></div>
+        <div class="fmt-field f-imm14">Imm14 (signed)<br><span class="f-bits">13:0</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:9px; color:var(--muted); margin-bottom:4px;">Format J — Jump/Call + 19-bit PC-relative Offset (no Rs field)</div>
+    <div class="format-box">
+      <div class="format-row">
+        <div class="fmt-field f-major">MAJ<br><span class="f-bits">31:28</span></div>
+        <div class="fmt-field f-minor">MIN<br><span class="f-bits">27:24</span></div>
+        <div class="fmt-field f-rd">Rd (link reg)<br><span class="f-bits">23:19</span></div>
+        <div class="fmt-field f-imm19">Imm19 (signed byte offset, ±256 KiB range)<br><span class="f-bits">18:0</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:9px; color:var(--muted); margin-bottom:4px;">Format JR — Jump-Register (indirect call/jump via register)</div>
+    <div class="format-box">
+      <div class="format-row">
+        <div class="fmt-field f-major">MAJ<br><span class="f-bits">31:28</span></div>
+        <div class="fmt-field f-minor">MIN<br><span class="f-bits">27:24</span></div>
+        <div class="fmt-field f-rd">Rd (link reg)<br><span class="f-bits">23:19</span></div>
+        <div class="fmt-field f-rs1">Rs1 (target addr)<br><span class="f-bits">18:14</span></div>
+        <div class="fmt-field f-imm14" style="flex:9">Imm9 offset<br><span class="f-bits">13:5</span></div>
+        <div class="fmt-field f-flags" style="flex:5; background:#2a2a40">reserved<br><span class="f-bits">4:0</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:9px; color:var(--muted); margin-bottom:4px;">Format U — Upper Immediate (LUI/AUIPC, 24-bit)</div>
+    <div class="format-box">
+      <div class="format-row">
+        <div class="fmt-field f-major">MAJ<br><span class="f-bits">31:28</span></div>
+        <div class="fmt-field f-minor">MIN<br><span class="f-bits">27:24</span></div>
+        <div class="fmt-field f-rd">Rd<br><span class="f-bits">23:19</span></div>
+        <div class="fmt-field f-imm19" style="flex:24">Uimm24 (unsigned, placed in bits[63:40])<br><span class="f-bits">[18:0] = 19b; upper 5b via assembler split</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:9px; color:var(--muted); line-height:1.6; margin-top:4px;">
+      Encoding formula (Format R):<br>
+      <span style="color:var(--c-hextext); filter:brightness(1.5);">
+      (Maj&lt;&lt;28)|(Min&lt;&lt;24)|(Rd&lt;&lt;19)|<br>(Rs1&lt;&lt;14)|(Rs2&lt;&lt;9)|(Flg&lt;&lt;6)|Aux
+      </span><br>
+      <span style="color:var(--muted)">Branch (Format I): Rd = first comparand, Rs1 = second comparand, Imm14 = signed byte offset.</span>
+    </div>
+    <div style="font-size:9px; color:var(--muted); line-height:1.6; margin-top:6px; border-top:1px solid var(--border); padding-top:6px;">
+      <span style="color:var(--text)">Pseudo-instructions (assembler aliases):</span><br>
+      <span style="color:var(--c-alu)">MOV Rd, Rs</span> → <span style="color:var(--c-hextext)">ADDI Rd, Rs, 0</span><br>
+      <span style="color:var(--c-alu)">NOP</span> → <span style="color:var(--c-hextext)">0x0F000000</span> (Maj=0x0 Min=0xF — dedicated NOP opcode; pipeline hint, no side-effects; not a pseudo — a first-class encoding)<br>
+      <span style="color:var(--c-alu)">LI Rd, imm</span> → <span style="color:var(--c-hextext)">ADDI Rd, R0, imm</span> (≤14-bit signed)<br>
+      <span style="color:var(--c-alu)">LI Rd, bigimm</span> → <span style="color:var(--c-hextext)">LUI Rd, upper24 + ADDI Rd, Rd, low14</span><br>
+      <span style="color:var(--c-alu)">CMPI Rs, imm</span> → <span style="color:var(--c-hextext)">SUBI R0, Rs, imm</span> (result discarded; sets flags for BEQ/BNE/BGT etc.)
+    </div>
+  </div>
+
+  <!-- Major Opcodes -->
+  <div class="sidebar-section">
+    <div class="sidebar-title">Major Opcode Table</div>
+    <table class="opcode-table">
+      <tr><td class="op-hex">0x0</td><td><span class="op-name" style="color:var(--c-alu)">ALU-R</span></td><td class="op-desc">Reg-reg arithmetic</td></tr>
+      <tr><td class="op-hex">0x1</td><td><span class="op-name" style="color:var(--c-alu)">ALU-I</span></td><td class="op-desc">Reg-immediate arith</td></tr>
+      <tr><td class="op-hex">0x2</td><td><span class="op-name" style="color:var(--c-mem)">LOAD</span></td><td class="op-desc">Memory read ops</td></tr>
+      <tr><td class="op-hex">0x3</td><td><span class="op-name" style="color:var(--c-mem)">STORE</span></td><td class="op-desc">Memory write ops</td></tr>
+      <tr><td class="op-hex">0x4</td><td><span class="op-name" style="color:var(--c-branch)">BRANCH</span></td><td class="op-desc">Conditional branches</td></tr>
+      <tr><td class="op-hex">0x5</td><td><span class="op-name" style="color:var(--c-branch)">JUMP</span></td><td class="op-desc">Call / return / syscall</td></tr>
+      <tr><td class="op-hex">0x6</td><td><span class="op-name" style="color:var(--c-sys)">SYSTEM</span></td><td class="op-desc">OS primitives, CSR</td></tr>
+      <tr><td class="op-hex">0x7</td><td><span class="op-name" style="color:var(--c-atomic)">ATOMIC</span></td><td class="op-desc">LL/SC, CAS, fences</td></tr>
+      <tr><td class="op-hex">0x8</td><td><span class="op-name" style="color:#aaa">VECTOR</span></td><td class="op-desc">SIMD / wide ops</td></tr>
+      <tr><td class="op-hex">0x9</td><td><span class="op-name" style="color:#aaa">CRYPTO</span></td><td class="op-desc">HW AES, SHA, RNG</td></tr>
+      <tr><td class="op-hex">0xA</td><td><span class="op-name" style="color:var(--c-cache)">CACHE</span></td><td class="op-desc">Prefetch, evict, flush</td></tr>
+      <tr><td class="op-hex">0xB</td><td><span class="op-name" style="color:#aaa">POWER</span></td><td class="op-desc">Sleep, freq scaling</td></tr>
+      <tr><td class="op-hex">0xC</td><td><span class="op-name" style="color:var(--c-graph)">GRAPH</span></td><td class="op-desc">Graph-native kernel ops</td></tr>
+      <tr><td class="op-hex">0xD</td><td><span class="op-name" style="color:var(--c-ai)">AI</span></td><td class="op-desc">AI/ML inference primitives</td></tr>
+      <tr><td class="op-hex">0xE</td><td><span class="op-name" style="color:var(--c-alu)">UPPER</span></td><td class="op-desc">LUI / AUIPC — 24-bit upper imm</td></tr>
+      <tr><td class="op-hex">0xF</td><td><span class="op-name" style="color:var(--c-dist)">DIST</span></td><td class="op-desc">Multi-node distributed NRF ops</td></tr>
+    </table>
+  </div>
+
+  <!-- Registers -->
+  <div class="sidebar-section">
+    <div class="sidebar-title">Register Files</div>
+    <div style="font-size:9px; color:var(--muted); margin-bottom:6px; letter-spacing:0.06em; text-transform:uppercase;">GPR — 32 × 64-bit General Purpose</div>
+    <div class="reg-grid">
+      <div class="reg-row"><span class="reg-name">R0</span><span class="reg-alias">zero</span></div>
+      <div class="reg-row"><span class="reg-name">R1–R7</span><span class="reg-alias">args</span></div>
+      <div class="reg-row"><span class="reg-name">R8–R15</span><span class="reg-alias">caller</span></div>
+      <div class="reg-row"><span class="reg-name">R16–R23</span><span class="reg-alias">callee</span></div>
+      <div class="reg-row"><span class="reg-name">R24</span><span class="reg-alias">SP</span></div>
+      <div class="reg-row"><span class="reg-name">R25</span><span class="reg-alias">FP</span></div>
+      <div class="reg-row"><span class="reg-name">R26</span><span class="reg-alias">LR</span></div>
+      <div class="reg-row"><span class="reg-name">R27</span><span class="reg-alias">TP</span></div>
+      <div class="reg-row"><span class="reg-name">R28</span><span class="reg-alias">CAP</span></div>
+      <div class="reg-row"><span class="reg-name">R29</span><span class="reg-alias">IM</span></div>
+      <div class="reg-row"><span class="reg-name">R30</span><span class="reg-alias">CSR</span></div>
+      <div class="reg-row"><span class="reg-name">R31</span><span class="reg-alias">PC</span></div>
+    </div>
+    <div style="font-size:9px; color:var(--muted); margin-top:8px; line-height:1.6;">
+      R0 is hardwired to zero. Writes are silently discarded.<br>
+      CAP (R28) = current memory capability ring.<br>
+      CSR (R30) = control-status register bank ptr.<br>
+      All GPRs are 64-bit wide; ops specify width via Flags field.
+    </div>
+    <div style="font-size:9px; color:var(--muted); margin-top:10px; margin-bottom:4px; letter-spacing:0.06em; text-transform:uppercase; color:var(--c-ai)">NRF — 8 × Node Register File (v4.0: DNRF)</div>
+    <div class="reg-grid">
+      <div class="reg-row"><span class="reg-name" style="color:var(--c-ai)">NRF[0]</span><span class="reg-alias">boot node</span></div>
+      <div class="reg-row"><span class="reg-name" style="color:var(--c-ai)">NRF[1]</span><span class="reg-alias">active domain</span></div>
+      <div class="reg-row"><span class="reg-name" style="color:var(--c-ai)">NRF[2]</span><span class="reg-alias">user-adapt</span></div>
+      <div class="reg-row"><span class="reg-name" style="color:var(--c-dist)">NRF[3–5]</span><span class="reg-alias">remote shards</span></div>
+      <div class="reg-row"><span class="reg-name" style="color:var(--c-dist)">NRF[6–7]</span><span class="reg-alias">fetch staging</span></div>
+    </div>
+    <div style="font-size:9px; color:var(--muted); margin-top:6px; line-height:1.6;">
+      Each NRF slot holds a 128-bit descriptor: 64-bit weight ptr + 16-bit version + 8-bit type (LOCAL/REMOTE_SHARD/REPLICATED) + 8-bit shard_id + 16-bit node_id + 16-bit epoch.<br>
+      NRF[0] always resident. NRF[1] hot-swapped per domain (NODE_SWAP).<br>
+      NRF[2] accumulates session deltas; flushed to distributed store by SHARD_COMMIT.<br>
+      NRF[3–5] hold remote shard references; fulfilled asynchronously via NODE_FETCH.<br>
+      NRF[6–7] staging slots for in-flight NODE_FETCH futures; resolved by NODE_SYNC.<br>
+      <strong style="color:var(--c-dist)">Version pinning:</strong> at INFER_START, CSR[0xD5] latches GLOBAL_VERSION; all NRF reads during that generation pass must match or stall at VERSION_FENCE.
+    </div>
+    <div style="font-size:9px; color:var(--muted); margin-top:10px; margin-bottom:4px; letter-spacing:0.06em; text-transform:uppercase; color:var(--c-ai)">TRF — 16 × 512-bit Tensor Register File</div>
+    <div style="font-size:9px; color:var(--muted); line-height:1.6;">
+      TRF[0..15] used by MATMUL, ATTN, LAYERNORM, SOFTMAX, EMBED.<br>
+      Each TRF entry is a <strong style="color:var(--text)">tensor descriptor</strong> packed into a 512-bit slot: 64-bit base ptr + 32-bit shape[0] + 32-bit shape[1] + 32-bit stride + 8-bit dtype (FP16/BF16/INT8/FP32) + 8-bit layout (ROW_MAJOR/TILED_8×8/PACKED) + 8-bit quant_scale_idx + 8-bit flags + 320-bit reserved/alignment (192b active, 512b slot).<br>
+      The descriptor points into NPU SRAM or main memory — TRF holds <em>handles</em>, not raw tensor data.<br>
+      TRF[0] = active weight tensor base (from NRF[1]).<br>
+      TRF[1] = system state embedding. TRF[2] = KV-cache handle.<br>
+      <strong style="color:var(--c-ai)">Synchronization:</strong> TENSOR_ST flushes write-back; MATMUL/ATTN implicitly acquire TRF[0] read-lock for duration of op. FENCE_AI (SYS minor 0xF) drains all in-flight NPU ops before CPU continues.
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="sidebar-section">
+    <div class="sidebar-title">Instruction Type Legend</div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-alu)"></div><span style="color:var(--c-alu)">ALU</span> <span style="color:var(--muted)">arithmetic &amp; logic</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-mem)"></div><span style="color:var(--c-mem)">MEM</span> <span style="color:var(--muted)">load &amp; store</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-branch)"></div><span style="color:var(--c-branch)">BR</span> <span style="color:var(--muted)">branch / call / ret</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-sys)"></div><span style="color:var(--c-sys)">SYS</span> <span style="color:var(--muted)">OS primitives / CSR</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-atomic)"></div><span style="color:var(--c-atomic)">ATOM</span> <span style="color:var(--muted)">atomics &amp; fences</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-cache)"></div><span style="color:var(--c-cache)">TLB</span> <span style="color:var(--muted)">TLB / cache ops</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-graph)"></div><span style="color:var(--c-graph)">GRAPH</span> <span style="color:var(--muted)">graph-native kernel ops</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-ai)"></div><span style="color:var(--c-ai)">AI</span> <span style="color:var(--muted)">AI/ML inference primitives</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-dist)"></div><span style="color:var(--c-dist)">DIST</span> <span style="color:var(--muted)">multi-node distributed NRF ops</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-cap)"></div><span style="color:var(--c-cap)">CAP</span> <span style="color:var(--muted)">capability seal / check ops</span></div>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-wrap">
+    <input class="search-box" id="searchBox" type="text" placeholder="Search mnemonic, register, address… (/)">
+    <div class="search-count" id="searchCount"></div>
+  </div>
+
+  <!-- Keyboard Hints -->
+  <div class="kbd-hint">
+    <span><span class="kbd">/</span> search</span>
+    <span><span class="kbd">j</span><span class="kbd">k</span> navigate</span>
+    <span><span class="kbd">Enter</span> jump</span>
+    <span><span class="kbd">Esc</span> clear</span>
+    <span><span class="kbd">dbl-click</span> copy bytes</span>
+  </div>
+
+  <!-- Live Task-Dependency Graph -->
+  <div class="graph-panel">
+    <div class="sidebar-title">Live Task Dependency Graph</div>
+    <canvas id="taskGraph"></canvas>
+    <div class="graph-legend">
+      <div class="gl-item"><div class="gl-dot" style="background:#5b8bdf"></div>kernel</div>
+      <div class="gl-item"><div class="gl-dot" style="background:#3dbfa0"></div>io</div>
+      <div class="gl-item"><div class="gl-dot" style="background:#c45db8"></div>ai-driven</div>
+      <div class="gl-item"><div class="gl-dot" style="background:#3ec8e8"></div>graph-op</div>
+      <div class="gl-item"><div class="gl-dot" style="background:#4a8a55"></div>dist-node</div>
+    </div>
+  </div>
+
+  <!-- UPPER ISA (LUI/AUIPC) -->
+  <div class="sidebar-section">
+    <div class="sidebar-title" style="color:var(--c-alu)">UPPER ISA — 0xE Major</div>
+    <table class="opcode-table">
+      <tr><td class="op-hex" style="color:var(--c-alu)">0x0</td><td><span class="op-name" style="color:var(--c-alu)">LUI</span></td><td class="op-desc">Load upper 24-bit imm → Rd[63:40]</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-alu)">0x1</td><td><span class="op-name" style="color:var(--c-alu)">AUIPC</span></td><td class="op-desc">Add upper imm to PC → Rd</td></tr>
+    </table>
+    <div style="font-size:9px; color:var(--muted); margin-top:8px; line-height:1.6;">
+      <span style="color:var(--c-alu)">LUI R1, 0x000001</span> then <span style="color:var(--c-alu)">ADDI R1, R1, 0x42</span> builds a 38-bit sparse constant in 2 instructions (bits[63:40] set by LUI, bits[13:0] from ADDI — bits[39:14] remain zero).
+      Use <span style="color:var(--c-alu)">AUIPC</span> for position-independent addressing: <span style="color:var(--c-hextext)">Rd ← PC + (Uimm24 &lt;&lt; 40)</span>.
+    </div>
+  </div>
+
+  <!-- GRAPH ISA Extension -->
+  <div class="sidebar-section">
+    <div class="sidebar-title" style="color:var(--c-graph)">GRAPH ISA — 0xC Major</div>
+    <table class="opcode-table">
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x0</td><td><span class="op-name" style="color:var(--c-graph)">GNODE_ALLOC</span></td><td class="op-desc">Allocate graph node</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x1</td><td><span class="op-name" style="color:var(--c-graph)">GEDGE_ADD</span></td><td class="op-desc">Add directed edge</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x2</td><td><span class="op-name" style="color:var(--c-graph)">GEDGE_DEL</span></td><td class="op-desc">Remove edge</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x3</td><td><span class="op-name" style="color:var(--c-graph)">GADJ_LOAD</span></td><td class="op-desc">Load adjacency list ptr</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x4</td><td><span class="op-name" style="color:var(--c-graph)">GMARK</span></td><td class="op-desc">Mark/unmark node</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x5</td><td><span class="op-name" style="color:var(--c-graph)">GTRAVERSE</span></td><td class="op-desc">BFS/DFS step (HW)</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x6</td><td><span class="op-name" style="color:var(--c-graph)">GPATH_FIND</span></td><td class="op-desc">HW shortest path</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x7</td><td><span class="op-name" style="color:var(--c-graph)">GTOPO_SORT</span></td><td class="op-desc">Topological sort</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x8</td><td><span class="op-name" style="color:var(--c-graph)">GREDUCE</span></td><td class="op-desc">Reduce over subgraph</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0x9</td><td><span class="op-name" style="color:var(--c-graph)">GCYCLE_DET</span></td><td class="op-desc">Cycle detection</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0xA</td><td><span class="op-name" style="color:var(--c-graph)">GSCC</span></td><td class="op-desc">Strongly connected comp</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-graph)">0xB</td><td><span class="op-name" style="color:var(--c-graph)">GWEIGHT_SET</span></td><td class="op-desc">Set edge weight</td></tr>
+    </table>
+    <div style="font-size:9px; color:var(--muted); margin-top:8px; line-height:1.6;">
+      Format: <span style="color:var(--c-graph)">GNODE_ALLOC Rd, Rs1</span> — Rd ← new node handle.<br>
+      <span style="color:var(--c-graph)">GEDGE_ADD Rs1, Rs2, Rimm</span> — edge Rs1→Rs2, weight=Rimm.<br>
+      Graph state stored in hardware Graph Register File (GRF[0..63]).
+    </div>
+  </div>
+
+  <!-- AI ISA Extension -->
+  <div class="sidebar-section">
+    <div class="sidebar-title" style="color:var(--c-ai)">AI ISA — 0xD Major</div>
+    <table class="opcode-table">
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x0</td><td><span class="op-name" style="color:var(--c-ai)">INFER_STEP</span></td><td class="op-desc">One transformer layer forward pass (microcode loop)</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x1</td><td><span class="op-name" style="color:var(--c-ai)">TENSOR_LD</span></td><td class="op-desc">Load tensor descriptor into TRF slot</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x2</td><td><span class="op-name" style="color:var(--c-ai)">TENSOR_ST</span></td><td class="op-desc">Store TRF descriptor + flush write-back</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x3</td><td><span class="op-name" style="color:var(--c-ai)">MATMUL</span></td><td class="op-desc">Tiled HW matrix multiply (shape from TRF descriptor)</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x4</td><td><span class="op-name" style="color:var(--c-ai)">ATTN</span></td><td class="op-desc">Scaled dot-product attention (Q/K/V from TRF)</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x5</td><td><span class="op-name" style="color:var(--c-ai)">EMBED</span></td><td class="op-desc">Embedding table lookup (token_id → dense vector)</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x6</td><td><span class="op-name" style="color:var(--c-ai)">ACT</span></td><td class="op-desc">Activation fn: GELU/ReLU/SiLU — AUX selects fn</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x7</td><td><span class="op-name" style="color:var(--c-ai)">SOFTMAX</span></td><td class="op-desc">HW numerically-stable softmax (online normalization)</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x8</td><td><span class="op-name" style="color:var(--c-ai)">LAYERNORM</span></td><td class="op-desc">RMSNorm or LayerNorm — AUX=0 for RMS, AUX=1 for LN</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0x9</td><td><span class="op-name" style="color:var(--c-ai)">KV_CACHE_RD</span></td><td class="op-desc">Read KV cache slot at position CSR[0xD0]+Rs1</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0xA</td><td><span class="op-name" style="color:var(--c-ai)">KV_CACHE_WR</span></td><td class="op-desc">Write KV cache slot; evicts LRU on overflow</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0xB</td><td><span class="op-name" style="color:var(--c-ai)">SAMPLE</span></td><td class="op-desc">Token sampling: Imm=0x00 → ARGMAX, else top-p (HW TRNG)</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0xC</td><td><span class="op-name" style="color:var(--c-ai)">NODE_LOAD</span></td><td class="op-desc">Load weight node from storage into NRF slot</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0xD</td><td><span class="op-name" style="color:var(--c-ai)">NODE_SWAP</span></td><td class="op-desc">Hot-swap active domain node (NRF[1]); cached = near-instant</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0xE</td><td><span class="op-name" style="color:var(--c-ai)">STEP_CHECKPOINT</span></td><td class="op-desc">Save partial INFER_STEP state → resume buffer; yield if CSR[0xD8].PREEMPT set</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-ai)">0xF</td><td><span class="op-name" style="color:var(--c-ai)">GENERATE</span></td><td class="op-desc">Macro-instruction: full N-token generation loop over INFER_STEP · GENERATE_CANCEL via CSR[0xDA]</td></tr>
+    </table>
+
+    <div style="font-size:9px; color:var(--muted); margin-top:10px; line-height:1.7; border-top:1px solid var(--border); padding-top:8px;">
+      <strong style="color:var(--c-ai); font-size:10px;">INFER_STEP Execution Model (microcode) — v4.0: Preemptible</strong><br>
+      <span style="color:var(--text)">INFER_STEP</span> is the atomic unit of generation — one transformer layer forward pass.
+      It is <em>not</em> a monolithic op but a hardware microcode sequence:<br>
+      <span style="color:var(--c-hextext)">① EMBED token_id → TRF[3]</span><br>
+      <span style="color:var(--c-hextext)">② save residual TRF[3] → TRF[10] (pre-norm x — saved BEFORE LN runs)</span><br>
+      <span style="color:var(--c-hextext)">③ LAYERNORM TRF[3] → TRF[4] (pre-attention norm; x safely in TRF[10])</span><br>
+      <span style="color:var(--c-hextext)">④ ATTN TRF[4], KV=TRF[2] → TRF[5] (HW-fused QKV projection + scaled dot-product)</span><br>
+      <span style="color:var(--c-hextext)">⑤ KV_CACHE_WR — KV entries appended by ATTN hardware</span><br>
+      <span style="color:var(--c-hextext)">⑥ ADD TRF[5] + TRF[10] → TRF[5] (post-attention residual)</span><br>
+      <span style="color:var(--c-hextext)">⑦ LAYERNORM TRF[5] → TRF[5] (pre-FFN norm)</span><br>
+      <span style="color:var(--c-hextext)">⑧ MATMUL TRF[5] × W_ffn_up → TRF[6] (FFN up-projection)</span><br>
+      <span style="color:var(--c-hextext)">⑨ ACT TRF[6] → TRF[6] (GELU)</span><br>
+      <span style="color:var(--c-hextext)">⑩ MATMUL TRF[6] × W_ffn_down + TRF[10] → TRF[5] (FFN down + tied residual x from TRF[10])</span><br>
+      <span style="color:var(--c-hextext)">⑪ STEP_CHECKPOINT — spill TRF state to 4 KB NPU resume buffer; check CSR[0xD8].PREEMPT</span><br>
+      <span style="color:var(--c-hextext)">⑫ Result in TRF[5] — layer output ready for next INFER_STEP or final SAMPLE</span><br>
+      <strong style="color:var(--c-ai)">v4.0 change:</strong> IRQs are no longer globally masked for the full microcode sequence.
+      STEP_CHECKPOINT (⑪) is the cooperative preemption point. If CSR[0xD8].PREEMPT=1 (set by the CPU IRQ arbiter), partial TRF state spills to the per-task NPU resume buffer and the step yields. On re-schedule, INFER_STEP resumes from the checkpoint with TRF state reloaded. This eliminates the 500μs–2ms IRQ blackout window present in v3.0.<br><br>
+
+      <strong style="color:var(--c-ai); font-size:10px;">GENERATE — the macro-instruction with abort path</strong><br>
+      <span style="color:var(--text)">GENERATE Rd, Rs1, #max_tokens</span> is a macro that loops INFER_STEP, feeds each SAMPLE output back as the next token input, checks EOS token or max_tokens limit, and returns a tensor handle in Rd pointing to the generated token sequence. This is what the OS calls for all user-visible inference — not raw INFER_STEP which is reserved for the kernel's AI dispatch layer.<br>
+      <strong style="color:var(--c-ai)">v4.0 abort path:</strong> CSR[0xDA] = GENERATE_CANCEL register. Writing any nonzero value to CSR[0xDA] while GENERATE is running causes the macro to drain the current INFER_STEP to its STEP_CHECKPOINT, then return with Rd containing a partial tensor handle marked CANCELLED. The next SYSRET clears CSR[0xDA]. This allows app teardown, user cancellation, and OOM reclaim without killing the NPU tile.<br><br>
+
+      <strong style="color:var(--c-ai); font-size:10px;">Two-Tier Generation Architecture</strong><br>
+      <em>Not everything is inference at runtime.</em> HELIX-64 uses a deliberate split:<br>
+      <span style="color:var(--text)">Stable Compiled Layer</span> — kernel entry, interrupt handlers, context switch, spinlocks, TLB management. These are fixed HELIX-64 assembly, compiled once, never regenerated. They are fast, auditable, and deterministic.<br>
+      <span style="color:var(--text)">Generated Orchestration Layer</span> — application behavior, UI surfaces, driver logic, user workflows. These are emitted by GENERATE at capability invocation time and cached as compiled node outputs in NPU SRAM. First call: inference. Subsequent calls: cached compiled result — near-instant.<br>
+      <span style="color:var(--text)">Adaptive Surface Layer</span> — live contextual generation for user interaction, novel queries, and adaptation. Only this layer runs GENERATE at user-visible latency. Sized to be fast enough on target NPU silicon.<br>
+      This prevents the "everything is latency" problem while preserving the generative OS principle.
+    </div>
+
+    <div style="font-size:9px; color:var(--muted); margin-top:8px; line-height:1.7; border-top:1px solid var(--border); padding-top:8px;">
+      <strong style="color:var(--c-ai); font-size:10px;">Tensor Memory Semantics</strong><br>
+      <strong style="color:var(--text)">Layout:</strong> TRF descriptors specify ROW_MAJOR (default), TILED_8×8 (for MATMUL throughput on NPU), or PACKED (quantized INT8/INT4 for bandwidth). MATMUL checks descriptor dtype and routes to the correct NPU datapath.<br>
+      <strong style="color:var(--text)">Quantization:</strong> Each TRF entry carries a quant_scale_idx pointing into a per-NRF scale table. MATMUL and ATTN dequantize on the fly; SAMPLE operates on FP32 logits always.<br>
+      <strong style="color:var(--text)">Bandwidth:</strong> NPU SRAM bandwidth target: 6 TB/s (on-die). Main memory fallback: 1 TB/s HBM. PREFETCH_AI (Cache major, Minor=0xD) preloads next layer's weights while current layer executes.<br>
+      <strong style="color:var(--text)">Cache coherency:</strong> TRF descriptors live in the NPU register file — not in L1/L2 CPU cache. FENCE_AI (SYS 0xF) is required before any CPU instruction reads a memory region written by TENSOR_ST. CPU-to-NPU synchronization uses a lightweight scoreboard; no full MESI broadcast.<br>
+      <strong style="color:var(--text)">Scheduling:</strong> INFER_STEP is dispatched to a free NPU tile; if all tiles are busy, the CPU stalls at the INFER_STEP issue boundary (visible in CSR[0xD1] = NPU_STALL_CYCLES counter).<br><br>
+      <span style="color:var(--c-ai)">NODE_SWAP NRF[1], #TEXT_EDITOR</span> — loads domain node; near-instant on cache hit.<br>
+      <span style="color:var(--c-ai)">GENERATE Rd, TRF[1], #256</span> — generate up to 256 tokens; abort via CSR[0xDA]=1.<br>
+      <span style="color:var(--c-ai)">SAMPLE Rd, TRF[10], #0x00</span> — ARGMAX: deterministic, equivalent to loading a saved file.<br>
+      <span style="color:var(--c-ai)">SAMPLE Rd, TRF[10], #0x5A</span> — top-p=0.9 stochastic with HW TRNG (live generation).<br>
+      <span style="color:var(--c-ai)">STEP_CHECKPOINT NRF[1]</span> — spill partial layer state; yields if PREEMPT flag set in CSR[0xD8].
+    </div>
+  </div>
+
+  <!-- DIST ISA Extension (v4.0) -->
+  <div class="sidebar-section">
+    <div class="sidebar-title" style="color:var(--c-dist)">DIST ISA — 0xF Major (v4.0 Multi-Node)</div>
+    <table class="opcode-table">
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x0</td><td><span class="op-name" style="color:var(--c-dist)">NODE_FETCH</span></td><td class="op-desc">Async RDMA pull: remote weight shard → NRF staging slot. Rd = future handle.</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x1</td><td><span class="op-name" style="color:var(--c-dist)">NODE_SYNC</span></td><td class="op-desc">Wait on NODE_FETCH future (Rs1=handle). Stalls until shard resident in NRF[Rd].</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x2</td><td><span class="op-name" style="color:var(--c-dist)">SHARD_COMMIT</span></td><td class="op-desc">Flush LoRA/gradient delta from NRF[2] to distributed weight store for layer_id.</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x3</td><td><span class="op-name" style="color:var(--c-dist)">VERSION_FENCE</span></td><td class="op-desc">Stall until all local NRF slots report version ≥ CSR[0xD5]. Inference coherency gate.</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x4</td><td><span class="op-name" style="color:var(--c-dist)">TOPO_QUERY</span></td><td class="op-desc">Read NODE_TOPO CSR bank: node count, latency table, topology type into R[Rd].</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x5</td><td><span class="op-name" style="color:var(--c-dist)">SHARD_PLACE</span></td><td class="op-desc">AI substrate hint: assign shard_id to node_id based on latency/bandwidth cost.</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x6</td><td><span class="op-name" style="color:var(--c-dist)">REPLICA_PROMOTE</span></td><td class="op-desc">On node failure: promote NRF[n].REPLICATED shard to PRIMARY. Failover ≤ 1 cycle.</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x7</td><td><span class="op-name" style="color:var(--c-dist)">VERSION_COMMIT</span></td><td class="op-desc">Bump GLOBAL_VERSION counter after SHARD_COMMIT. Makes delta visible to all nodes.</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x8</td><td><span class="op-name" style="color:var(--c-dist)">INFER_START</span></td><td class="op-desc">Pin snapshot: CSR[0xD5] ← GLOBAL_VERSION. All NRF reads locked to this version.</td></tr>
+      <tr><td class="op-hex" style="color:var(--c-dist)">0x9</td><td><span class="op-name" style="color:var(--c-dist)">INFER_END</span></td><td class="op-desc">Release version snapshot. Allows pending VERSION_COMMITs to become visible.</td></tr>
+    </table>
+    <div style="font-size:9px; color:var(--muted); margin-top:10px; line-height:1.7;">
+      <strong style="color:var(--c-dist); font-size:10px;">Distributed NRF Protocol</strong><br>
+      Weight shards carry a monotonic version counter. Inference always reads a <em>snapshot version</em>
+      pinned at INFER_START — so all layers of one generation pass see a consistent weight state even
+      as remote nodes apply training deltas concurrently. SHARD_COMMIT applies a LoRA delta
+      (rank-r adapter: W_new = W_base + α·A×B) to a shadow version. VERSION_COMMIT bumps the global
+      counter; VERSION_FENCE ensures all NRF slots are up to date before the next generation pass begins.<br><br>
+      <strong style="color:var(--c-dist)">NODE_TOPO CSR Bank (0xE0–0xEF):</strong><br>
+      <span style="color:var(--c-hextext)">CSR[0xE0]</span> = total_node_count (max 16 base spec)<br>
+      <span style="color:var(--c-hextext)">CSR[0xE1]</span> = local_node_id<br>
+      <span style="color:var(--c-hextext)">CSR[0xE2]</span> = interconnect_bandwidth_GBps<br>
+      <span style="color:var(--c-hextext)">CSR[0xE3]</span> = topology_type (0=ring, 1=mesh, 2=fat-tree, 3=NVLink-style)<br>
+      <span style="color:var(--c-hextext)">CSR[0xE4–0xEF]</span> = per-node latency table (ns, 16 entries)<br><br>
+      <strong style="color:var(--c-dist)">v4.0 CSR additions:</strong><br>
+      <span style="color:var(--c-hextext)">CSR[0xD5]</span> = GLOBAL_VERSION (snapshot-pinned at INFER_START)<br>
+      <span style="color:var(--c-hextext)">CSR[0xD8]</span> = PREEMPT flag (bit 0 = preempt INFER_STEP at next STEP_CHECKPOINT)<br>
+      <span style="color:var(--c-hextext)">CSR[0xDA]</span> = GENERATE_CANCEL (write nonzero to abort GENERATE macro)<br>
+      <span style="color:var(--c-hextext)">CSR[0xDB]</span> = NODE_FETCH_STATUS (bitmap: bit N=1 means NRF[N] fetch complete)<br>
+    </div>
+  </div>
+
+  <!-- Capability Descriptor (v4.0) -->
+  <div class="sidebar-section">
+    <div class="sidebar-title" style="color:var(--c-cap)">Capability Descriptor — v4.0</div>
+    <div style="font-size:9px; color:var(--muted); line-height:1.7;">
+      CAP (R28) holds a <strong style="color:var(--text)">64-bit sealed capability token</strong>:<br>
+      <span style="color:var(--c-hextext)">bits[63:48]</span> = ring level (0=kernel, 1=driver, 2=trusted, 3=user)<br>
+      <span style="color:var(--c-hextext)">bits[47:32]</span> = domain_id (which NRF node family owns this cap)<br>
+      <span style="color:var(--c-hextext)">bits[31:16]</span> = permission mask (field-relative bit positions within this 16-bit field):<br>
+      &nbsp;&nbsp;<span style="color:var(--c-hextext)">bit 15</span>=READ &nbsp;<span style="color:var(--c-hextext)">bit 14</span>=WRITE &nbsp;<span style="color:var(--c-hextext)">bit 13</span>=EXEC<br>
+      &nbsp;&nbsp;<span style="color:var(--c-hextext)">bit 12</span>=AI_INVOKE &nbsp;<span style="color:var(--c-hextext)">bit 11</span>=DIST_FETCH<br>
+      &nbsp;&nbsp;<span style="color:var(--c-hextext)">bit 10</span>=SHARD_COMMIT &nbsp;<span style="color:var(--c-hextext)">bit 9</span>=ENCLAVE_RW<br>
+      <span style="color:var(--c-hextext)">bits[15:0]</span> = generation counter (monotonic; prevents replayed caps from being valid)<br><br>
+      CAP_SEAL validates and seals all fields atomically. CAP_UNSEAL re-enables the capability for a specific domain. CAP_CHECK sets the processor flag register:
+      flag=1 if ring, domain, permission, and generation all pass; flag=0 if any check fails.
+      A failed CAP_CHECK followed by a BNF-guarded branch is the canonical privilege gate (BNF branches when flag=0, i.e. on denial).<br><br>
+      <span style="color:var(--c-cap)">CAP_SEAL CAP, R1</span> — seal with new task's domain; increments generation.<br>
+      <span style="color:var(--c-cap)">CAP_UNSEAL CAP, R1</span> — restore capability for new task.<br>
+      <span style="color:var(--c-cap)">CAP_CHECK CAP, #AI_INVOKE|DIST_FETCH</span> — verify permissions; sets flag.
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="sidebar-section">
+    <div class="sidebar-title">AI-OS Sections</div>
+    <ul class="nav-list">
+      <li><a href="#kernel_entry">_kernel_entry <span class="nav-addr">0xFFFF0000</span></a></li>
+      <li><a href="#init_platform">_init_platform <span class="nav-addr">0xFFFF001C</span></a></li>
+      <li><a href="#irq_handler">_irq_handler <span class="nav-addr">0xFFFF0058</span></a></li>
+      <li><a href="#ctx_switch">_context_switch <span class="nav-addr">0xFFFF00A8</span></a></li>
+      <li><a href="#page_fault">_page_fault <span class="nav-addr">0xFFFF00D8</span></a></li>
+      <li><a href="#spinlock">_spinlock_acquire <span class="nav-addr">0xFFFF0108</span></a></li>
+      <li><a href="#spinlock_rel">_spinlock_release <span class="nav-addr">0xFFFF0128</span></a></li>
+      <li><a href="#alloc_page">_alloc_page <span class="nav-addr">0xFFFF0148</span></a></li>
+      <li><a href="#syscall">_syscall_dispatch <span class="nav-addr">0xFFFF0178</span></a></li>
+      <li><a href="#graph_sched">_graph_scheduler <span class="nav-addr" style="color:var(--c-graph)">0xFFFF01B8</span></a></li>
+      <li><a href="#ai_dispatch">_ai_model_dispatch <span class="nav-addr" style="color:var(--c-ai)">0xFFFF0248</span></a></li>
+      <li><a href="#neuron_fwd">_neuron_forward <span class="nav-addr" style="color:var(--c-ai)">0xFFFF02A8</span></a></li>
+      <li><a href="#dist_shard">_dist_shard_fetch <span class="nav-addr" style="color:var(--c-dist)">0xFFFF0300</span></a></li>
+      <li><a href="#version_mgr">_version_manager <span class="nav-addr" style="color:var(--c-dist)">0xFFFF0340</span></a></li>
+      <li><a href="#shard_trainer">_shard_trainer <span class="nav-addr" style="color:var(--c-dist)">0xFFFF0380</span></a></li>
+    </ul>
+  </div>
+
+</div><!-- /sidebar -->
+
+<!-- ─── MAIN LISTING ─── -->
+<div class="listing" id="listing">
+
+<!--
+  ════════════════════════════════════════════════════════════
+   HOW TO READ THIS LISTING:
+   ADDR      : virtual address in kernel memory (0xFFFFxxxx = ring-0 space)
+   HEX BYTES : 32-bit instruction word shown MSB-first (big-endian display). Data registers are 64-bit.
+   MNEMONIC  : human-readable assembly derived from the binary encoding
+   COMMENT   : what the instruction does — in this system, "OS level" means the AI substrate.
+               There is no traditional kernel. The model is the OS. These primitives exist
+               solely to stand up bare metal and hand execution to _ai_model_dispatch.
+
+   ENCODING FORMULA (Format R):
+     bits[31:28] = Major opcode class (4b)
+     bits[27:24] = Minor opcode within class (4b)
+     bits[23:19] = Destination register Rd (5b)  → values 0-31
+     bits[18:14] = Source register Rs1 (5b)
+     bits[13:9]  = Source register Rs2 (5b)
+     bits[8:6]   = Flags: width (64/32/16/8) + set-flags bit (3b)
+     bits[5:0]   = Aux: shift amount or extended opcode (6b)
+
+   BRANCH MINOR OPCODES (Maj=0x4):
+     0x0 = BEQ   (equal)        0x4 = BLT  (less-than signed)
+     0x1 = BNE   (not equal)    0x5 = BGE  (greater-or-equal signed)
+     0x2 = BF    (flag set)     0x6 = BLTU (less-than unsigned)
+     0x3 = BGT   (greater-than) 0x7 = BNF  (flag clear)
+   BF/BNF test the processor flag register set by CAP_CHECK, MUL overflow, etc.
+
+   Example: ADD R8, R1, R2
+     Major=0x0 (ALU-R), Minor=0x0 (ADD), Rd=8, Rs1=1, Rs2=2, Flg=0, Aux=0
+     = (0<<28)|(0<<24)|(8<<19)|(1<<14)|(2<<9)|0|0
+     = 0x00404400
+  ════════════════════════════════════════════════════════════
+-->
+
+<!-- ══════════ 1. KERNEL ENTRY ══════════ -->
+<div id="kernel_entry" class="asm-section-header">
+  <span class="fn-name">_kernel_entry</span>
+  <span class="fn-addr">0xFFFF0000</span>
+  <span class="fn-desc">Boot entry — firmware hands off here; 7 instructions to AI substrate</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Firmware has completed DRAM init and BIOS table population before
+  ;; the reset vector fires. Seven instructions: sync the pipeline,
+  ;; mask interrupts, read CPU ID, park secondary cores, set a boot stack,
+  ;; call _ai_model_dispatch, and a defensive halt. The model takes it from there.
+  ;; There is no scheduler_main. The model IS the scheduler.
+</div>
+
+<!-- NOP -->
+<div class="asm-row" title="Encoding: Maj=0x0 Min=0xF → 0x0F000000 (dedicated NOP opcode)">
+  <span class="asm-addr">FFFF:0000</span>
+  <span class="asm-bytes">0F 00 00 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">NOP</span>
+  </div>
+  <span class="asm-comment">; Pipeline sync at reset vector. Dedicated NOP — no side-effects, microcode front-end hint.</span>
+</div>
+
+<!-- INT_DISABLE -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0x7(INT_DISABLE) → 0x67000000">
+  <span class="asm-addr">FFFF:0004</span>
+  <span class="asm-bytes">67 00 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">INT_DISABLE</span>
+  </div>
+  <span class="asm-comment">; Mask all IRQs/FIQs. Sets IM.GLOBAL=0 atomically — required before touching privileged state.</span>
+</div>
+
+<!-- CSR_READ R8, 0x00 — CPU ID -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0xC(CSR_READ) Rd=R8 Imm=0x00 → 0x6C400000">
+  <span class="asm-addr">FFFF:0008</span>
+  <span class="asm-bytes">6C 40 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_READ</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="imm">CSR[0x00]</span>
+  </div>
+  <span class="asm-comment">; R8 ← CPU_ID. Non-zero → secondary core; only CPU-0 initializes the AI substrate.</span>
+</div>
+
+<!-- BNE R8, R0 — secondary CPUs spin (self-loop) -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x1(BNE) Rs1=R8 Rs2=R0 Imm=-4 (self-branch) → 0x41400FFC">
+  <span class="asm-addr">FFFF:000C</span>
+  <span class="asm-bytes">41 40 0F FC</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNE</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="sym">-4</span>
+  </div>
+  <span class="asm-comment">; Non-zero CPU ID → tight self-loop spin here. Secondary cores idle until IPI wakes them after AI substrate init. (-4 byte offset = branch to self.)</span>
+</div>
+
+<!-- LUI SP, 0x1000 — set stack pointer in one instruction -->
+<div class="asm-row" title="Encoding: Maj=0xE(UPPER) Min=0x0(LUI) Rd=R24(SP) Uimm24=0x001000 → 0xE0C01000">
+  <span class="asm-addr">FFFF:0010</span>
+  <span class="asm-bytes">E0 C0 10 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">LUI</span>
+    <span class="reg">SP</span><span class="punct">, </span><span class="imm">0x001000</span>
+  </div>
+  <span class="asm-comment">; SP ← 0x1000 &lt;&lt; 40 = 0x0001_0000_0000_0000 (1 TiB mark). Single-instruction 64-bit stack init.</span>
+</div>
+
+<!-- CALLL LR, _ai_model_dispatch -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x6(CALLL) Format J: Rd=R26(LR) Imm19=+0x230 → 0x56D00230">
+  <span class="asm-addr">FFFF:0014</span>
+  <span class="asm-bytes">56 D0 02 30</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">CALLL</span>
+    <span class="reg">LR</span><span class="punct">, </span><span class="sym">_ai_model_dispatch</span>
+  </div>
+  <span class="asm-comment">; Format J (PC-relative). Hand off to the AI substrate — this call never returns. The model IS the OS.</span>
+</div>
+
+<!-- HALT -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0xE(HALT) → 0x6E000000">
+  <span class="asm-addr">FFFF:0018</span>
+  <span class="asm-bytes">6E 00 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">HALT</span>
+  </div>
+  <span class="asm-comment">; Defensive halt — unreachable. Signals catastrophic AI substrate failure.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 2. INIT PLATFORM ══════════ -->
+<div id="init_platform" class="asm-section-header">
+  <span class="fn-name">_init_platform</span>
+  <span class="fn-addr">0xFFFF001C</span>
+  <span class="fn-desc">Lazy HW init — TLB, MMU, caches, NUMA, NPU tiles. Called by AI substrate on first inference token.</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Not part of boot. _ai_model_dispatch calls this lazily on the first
+  ;; NODE_LOAD (triggered by the first inference token). Detects platform
+  ;; type from CSR, enables MMU and caches, configures NUMA zones, and
+  ;; maps NPU tiles into the kernel capability space and NRF persistent storage region.
+  ;; Must complete before NODE_LOAD can execute.
+  ;; Platform type 0x03 = HELIX Reference Platform (HRP). Others = panic.
+</div>
+
+<!-- CSR_READ R1, CSR[0x02] -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xC Rd=R1 Imm=0x02 → 0x6C080002">
+  <span class="asm-addr">FFFF:001C</span>
+  <span class="asm-bytes">6C 08 00 02</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_READ</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="imm">CSR[0x02]</span>
+  </div>
+  <span class="asm-comment">; R1 ← PLATFORM_TYPE register. Identifies the hardware model/generation.</span>
+</div>
+
+<!-- ADDI R2, R0, 3 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x0 Rd=R2 Rs1=R0 Imm=3 → 0x10100003">
+  <span class="asm-addr">FFFF:0020</span>
+  <span class="asm-bytes">10 10 00 03</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">R2</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="imm">3</span>
+  </div>
+  <span class="asm-comment">; R2 ← 3 (HELIX Reference Platform type code). Used as comparison target.</span>
+</div>
+
+<!-- BEQ R1, R2, +0x10 -->
+<div class="asm-row" title="Encoding: Maj=0x4 Min=0x0 Rs1=R1 Rs2=R2 Imm=+0x10 → 0x40088010">
+  <span class="asm-addr">FFFF:0024</span>
+  <span class="asm-bytes">40 08 80 10</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BEQ</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="reg">R2</span><span class="punct">, </span><span class="sym">+0x10</span>
+  </div>
+  <span class="asm-comment">; If platform == HRP → skip panic, jump to cache_init. Otherwise fall through.</span>
+</div>
+
+<!-- CALLL LR, _panic (unknown platform) -->
+<div class="asm-row" title="Encoding: Maj=0x5 Min=0x6 Rd=LR Imm=-0x300 (negative offset) → 0x56D7FD00">
+  <span class="asm-addr">FFFF:0028</span>
+  <span class="asm-bytes">56 D7 FD 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">CALLL</span>
+    <span class="reg">LR</span><span class="punct">, </span><span class="sym">_panic</span>
+  </div>
+  <span class="asm-comment">; Unknown platform. Non-returning call: _panic writes to crash log and HALT. LR saved but never used.</span>
+</div>
+
+<!-- cache_init: -->
+<div class="asm-label-row">.cache_init:</div>
+
+<!-- CSR_WRITE R0, 0x10 -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xD Rd=R0 Imm=0x10 → 0x6D000010">
+  <span class="asm-addr">FFFF:002C</span>
+  <span class="asm-bytes">6D 00 00 10</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_WRITE</span>
+    <span class="reg">R0</span><span class="punct">, </span><span class="imm">CSR[0x10]</span>
+  </div>
+  <span class="asm-comment">; Enable L1 I-cache + D-cache (CTRL_CACHE_L1). Write 0 = enable both banks.</span>
+</div>
+
+<!-- CSR_WRITE R0, 0x11 -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xD Rd=R0 Imm=0x11 → 0x6D000011">
+  <span class="asm-addr">FFFF:0030</span>
+  <span class="asm-bytes">6D 00 00 11</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_WRITE</span>
+    <span class="reg">R0</span><span class="punct">, </span><span class="imm">CSR[0x11]</span>
+  </div>
+  <span class="asm-comment">; Enable L2 unified cache (CTRL_CACHE_L2). 8-way set-assoc, 64B cache lines.</span>
+</div>
+
+<!-- ADDI R3, R0, 4 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x0 Rd=R3 Rs1=R0 Imm=4 → 0x10180004">
+  <span class="asm-addr">FFFF:0034</span>
+  <span class="asm-bytes">10 18 00 04</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">R3</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="imm">4</span>
+  </div>
+  <span class="asm-comment">; R3 ← 4 (NUMA node count on this platform). Statically encoded for HRP.</span>
+</div>
+
+<!-- CSR_WRITE R3, 0x30 -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xD Rd=R3 Rs1=R0 Imm=0x30 → 0x6D180030">
+  <span class="asm-addr">FFFF:0038</span>
+  <span class="asm-bytes">6D 18 00 30</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_WRITE</span>
+    <span class="reg">R3</span><span class="punct">, </span><span class="imm">CSR[0x30]</span>
+  </div>
+  <span class="asm-comment">; Program NUMA_NODES register with count=4. Enables NUMA-aware page allocator.</span>
+</div>
+
+<!-- RET LR -->
+<div class="asm-row" title="Encoding: Maj=0x5 Min=0x2(RET) Rd=R26(LR) → 0x52D00000">
+  <span class="asm-addr">FFFF:003C</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; PC ← LR. Return to _kernel_entry. Platform is now online.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 3. INTERRUPT HANDLER ══════════ -->
+<!-- Note: FFFF:0040–FFFF:0057 = intentional gap. This space holds the hardware IVT
+     (interrupt vector table) stubs written by firmware before handing off to _kernel_entry. -->
+<div id="irq_handler" class="asm-section-header">
+  <span class="fn-name">_irq_handler</span>
+  <span class="fn-addr">0xFFFF0058</span>
+  <span class="fn-desc">Generic interrupt service routine — save, dispatch, restore, IRET</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Entered from hardware interrupt vector table with interrupts still DISABLED. Entry point: 0xFFFF0058.
+  ;; HELIX guarantees: on IRQ entry, CSR[0x50] holds interrupt cause + vector number.
+  ;; We use CTX_SAVE (single instruction) to preserve all 32 registers atomically.
+  ;; After dispatch to the specific handler, CTX_LOAD + INT_RETURN restores state.
+</div>
+
+<!-- CTX_SAVE CAP, SP -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x0(CTX_SAVE) Rd=R28(CAP) Rs1=R24(SP) → 0x60E60000">
+  <span class="asm-addr">FFFF:0058</span>
+  <span class="asm-bytes">60 E6 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CTX_SAVE</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="reg">SP</span>
+  </div>
+  <span class="asm-comment">; HARDWARE: atomically saves all 32 regs + PC + IM + CAP to interrupt save area.</span>
+</div>
+
+<!-- ADDI SP, SP, -0x200 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x0 Rd=SP Rs1=SP Imm=-512 (0x3E00 in 14-bit 2's comp) → 0x10C63E00">
+  <span class="asm-addr">FFFF:005C</span>
+  <span class="asm-bytes">10 C6 3E 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">SP</span><span class="punct">, </span><span class="reg">SP</span><span class="punct">, </span><span class="imm">-0x200</span>
+  </div>
+  <span class="asm-comment">; Allocate 512-byte interrupt frame on kernel stack. -512 in 14-bit two's complement.</span>
+</div>
+
+<!-- ST64 [SP+0], LR -->
+<div class="asm-row" title="Encoding: Maj=0x3(STORE) Min=0x0(ST64) Rs_src=R26(LR) Rs_base=R24(SP) Imm=0 → 0x30D60000">
+  <span class="asm-addr">FFFF:0060</span>
+  <span class="asm-bytes">30 D6 00 00</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">ST64</span>
+    <span class="punct">[</span><span class="reg">SP</span><span class="imm">+0</span><span class="punct">], </span><span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; mem[SP+0] ← LR. Spill link register — needed if handler calls sub-functions.</span>
+</div>
+
+<!-- ST64 [SP+8], R1 -->
+<div class="asm-row" title="Encoding: Maj=0x3 Min=0x0 Rs_src=R1 Rs_base=SP Imm=8 → 0x30068008">
+  <span class="asm-addr">FFFF:0064</span>
+  <span class="asm-bytes">30 06 80 08</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">ST64</span>
+    <span class="punct">[</span><span class="reg">SP</span><span class="imm">+8</span><span class="punct">], </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; Spill R1 (used as interrupt vector index scratch register).</span>
+</div>
+
+<!-- ST64 [SP+16], R2 -->
+<div class="asm-row" title="Encoding: Maj=0x3 Min=0x0 Rs_src=R2 Rs_base=SP Imm=16 → 0x30160010">
+  <span class="asm-addr">FFFF:0068</span>
+  <span class="asm-bytes">30 16 00 10</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">ST64</span>
+    <span class="punct">[</span><span class="reg">SP</span><span class="imm">+16</span><span class="punct">], </span><span class="reg">R2</span>
+  </div>
+  <span class="asm-comment">; Spill R2 (used as handler dispatch table pointer).</span>
+</div>
+
+<!-- CSR_READ R1, CSR[0x50] — read interrupt cause -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xC Rd=R1 Imm=0x50 → 0x6C080050">
+  <span class="asm-addr">FFFF:006C</span>
+  <span class="asm-bytes">6C 08 00 50</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_READ</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="imm">CSR[0x50]</span>
+  </div>
+  <span class="asm-comment">; R1 ← INTERRUPT_CAUSE. bits[15:8]=vector#, bits[7:0]=flags (edge/level, priority).</span>
+</div>
+
+<!-- SHRI R1, R1, 8 -->
+<div class="asm-row" title="Encoding: Maj=0x1(ALU-I) Min=0x8(SHR) Rd=R1 Rs1=R1 Imm=8 → 0x18084008">
+  <span class="asm-addr">FFFF:0070</span>
+  <span class="asm-bytes">18 08 40 08</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">SHRI</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="reg">R1</span><span class="punct">, </span><span class="imm">8</span>
+  </div>
+  <span class="asm-comment">; R1 ← R1 &gt;&gt; 8. Extract the 8-bit IRQ vector number from the cause register.</span>
+</div>
+
+<!-- ANDI R1, R1, 0xFF -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x4(AND) Rd=R1 Rs1=R1 Imm=255 → 0x140840FF">
+  <span class="asm-addr">FFFF:0074</span>
+  <span class="asm-bytes">14 08 40 FF</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ANDI</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="reg">R1</span><span class="punct">, </span><span class="imm">0xFF</span>
+  </div>
+  <span class="asm-comment">; Mask to low 8 bits. Vector# is 0–255; upper bits may hold pending IRQ count.</span>
+</div>
+
+<!-- LD64 R2, [CSR+0x60] -->
+<div class="asm-row" title="Encoding: Maj=0x2(LOAD) Min=0x0(LD64) Rd=R2 Rs1=R30(CSR) Imm=0x60 → 0x20178060">
+  <span class="asm-addr">FFFF:0078</span>
+  <span class="asm-bytes">20 17 80 60</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R2</span><span class="punct">, [</span><span class="reg">CSR</span><span class="imm">+0x60</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R2 ← IVT_BASE_ADDR from CSR bank. Points to 256-entry interrupt vector table.</span>
+</div>
+
+<!-- SHLI R1, R1, 3 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x7(SHL) Rd=R1 Rs1=R1 Imm=3 → 0x17084003">
+  <span class="asm-addr">FFFF:007C</span>
+  <span class="asm-bytes">17 08 40 03</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">SHLI</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="reg">R1</span><span class="punct">, </span><span class="imm">3</span>
+  </div>
+  <span class="asm-comment">; R1 ← vector# × 8. Each IVT entry is 8 bytes (64-bit function pointer).</span>
+</div>
+
+<!-- ADD R2, R2, R1 -->
+<div class="asm-row" title="Encoding: Maj=0x0(ALU-R) Min=0x0(ADD) Rd=R2 Rs1=R2 Rs2=R1 → 0x00108200">
+  <span class="asm-addr">FFFF:0080</span>
+  <span class="asm-bytes">00 10 82 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADD</span>
+    <span class="reg">R2</span><span class="punct">, </span><span class="reg">R2</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; R2 ← IVT_BASE + (vector# × 8). Address of the specific handler pointer slot.</span>
+</div>
+
+<!-- LD64 R2, [R2+0] — deref handler pointer -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=R2 Rs1=R2 Imm=0 → 0x20108000">
+  <span class="asm-addr">FFFF:0084</span>
+  <span class="asm-bytes">20 10 80 00</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R2</span><span class="punct">, [</span><span class="reg">R2</span><span class="imm">+0</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R2 ← *IVT[vector#]. Dereference to get the actual handler function address.</span>
+</div>
+
+<!-- CALL LR, R2 — dispatch to handler -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x1(CALL) Format JR: Rd=LR Rs1=R2 Imm9=0 → 0x51D08000">
+  <span class="asm-addr">FFFF:0088</span>
+  <span class="asm-bytes">51 D0 80 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">CALL</span>
+    <span class="reg">LR</span><span class="punct">, </span><span class="reg">R2</span>
+  </div>
+  <span class="asm-comment">; Format JR (register indirect). LR ← PC+4; PC ← R2. Distinct from CALLL (Format J): CALL uses Rs1 as target, CALLL uses Imm19 PC-relative offset.</span>
+</div>
+
+<!-- LD64 R2, [SP+16] — restore R2 -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=R2 Rs1=SP Imm=16 → 0x20160010">
+  <span class="asm-addr">FFFF:008C</span>
+  <span class="asm-bytes">20 16 00 10</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R2</span><span class="punct">, [</span><span class="reg">SP</span><span class="imm">+16</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; Restore R2 from interrupt frame.</span>
+</div>
+
+<!-- LD64 R1, [SP+8] -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=R1 Rs1=SP Imm=8 → 0x20068008">
+  <span class="asm-addr">FFFF:0090</span>
+  <span class="asm-bytes">20 06 80 08</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R1</span><span class="punct">, [</span><span class="reg">SP</span><span class="imm">+8</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; Restore R1 from interrupt frame.</span>
+</div>
+
+<!-- LD64 LR, [SP+0] -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=LR Rs1=SP Imm=0 → 0x20D60000">
+  <span class="asm-addr">FFFF:0094</span>
+  <span class="asm-bytes">20 D6 00 00</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">LR</span><span class="punct">, [</span><span class="reg">SP</span><span class="imm">+0</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; Restore link register from interrupt frame.</span>
+</div>
+
+<!-- ADDI SP, SP, 0x200 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x0 Rd=SP Rs1=SP Imm=+512 → 0x10C60200">
+  <span class="asm-addr">FFFF:0098</span>
+  <span class="asm-bytes">10 C6 02 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">SP</span><span class="punct">, </span><span class="reg">SP</span><span class="punct">, </span><span class="imm">+0x200</span>
+  </div>
+  <span class="asm-comment">; Deallocate interrupt frame. SP restored to pre-interrupt kernel stack position.</span>
+</div>
+
+<!-- CTX_LOAD CAP, SP -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x1(CTX_LOAD) Rd=CAP Rs1=SP → 0x61E60000">
+  <span class="asm-addr">FFFF:009C</span>
+  <span class="asm-bytes">61 E6 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CTX_LOAD</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="reg">SP</span>
+  </div>
+  <span class="asm-comment">; HARDWARE: atomically restores all 32 registers + PC + flags from save area.</span>
+</div>
+
+<!-- INT_RETURN -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x8(INT_RETURN) → 0x68000000">
+  <span class="asm-addr">FFFF:00A0</span>
+  <span class="asm-bytes">68 00 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">INT_RETURN</span>
+  </div>
+  <span class="asm-comment">; Atomically re-enables interrupts + restores privilege level + jumps to saved PC.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 4. CONTEXT SWITCH ══════════ -->
+<div id="ctx_switch" class="asm-section-header">
+  <span class="fn-name">_context_switch</span>
+  <span class="fn-addr">0xFFFF00A8</span>
+  <span class="fn-desc">Preemptive scheduler primitive — atomic task swap with capability sealing</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Called from IRQ handler after selecting a new task. R1 = ptr to new TCB.
+  ;; HELIX context switch is unique: CAP_SEAL prevents the old task from accessing
+  ;; kernel state after it resumes. CTX_SWITCH is a single atomic instruction —
+  ;; the CPU guarantees no observable intermediate state (critical for Spectre mitig.)
+</div>
+
+<!-- CAP_SEAL CAP, R1 -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xA(CAP_SEAL) Rd=CAP Rs1=R1 → 0x6AE04000">
+  <span class="asm-addr">FFFF:00A8</span>
+  <span class="asm-bytes">6A E0 40 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CAP_SEAL</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; Seal current task's capability. Prevents it from forging ring-0 pointers after resume.</span>
+</div>
+
+<!-- AMOCAS R4, R3, [R2] — CAS the scheduler run-queue lock -->
+<div class="asm-row" title="Encoding: Maj=0x7(ATOMIC) Min=0x5(AMOCAS) Rd=R4 Rs1=R3 Rs2=R2 → 0x7520C400">
+  <span class="asm-addr">FFFF:00AC</span>
+  <span class="asm-bytes">75 20 C4 00</span>
+  <div class="asm-mnemonic t-atomic">
+    <span class="mn t-atomic">AMOCAS</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="reg">R3</span><span class="punct">, [</span><span class="reg">R2</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; Atomic CAS: if mem[R2]==R3(expected), write R4(new_val) to mem[R2]; R4←old_val (Rd is in/out). Acquires rq lock.</span>
+</div>
+
+<!-- BNE R4, R3, retry -->
+<div class="asm-row" title="Encoding: Maj=0x4 Min=0x1(BNE) Rs1=R4 Rs2=R3 Imm=-8 → 0x4120FFF8">
+  <span class="asm-addr">FFFF:00B0</span>
+  <span class="asm-bytes">41 20 FF F8</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNE</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="reg">R3</span><span class="punct">, </span><span class="sym">-8</span>
+  </div>
+  <span class="asm-comment">; If CAS failed (lock already held), retry the AMOCAS. -8 byte = back 2 instrs.</span>
+</div>
+
+<!-- FENCE -->
+<div class="asm-row" title="Encoding: Maj=0x7 Min=0x8(FENCE) → 0x78000000">
+  <span class="asm-addr">FFFF:00B4</span>
+  <span class="asm-bytes">78 00 00 00</span>
+  <div class="asm-mnemonic t-atomic">
+    <span class="mn t-atomic">FENCE</span>
+  </div>
+  <span class="asm-comment">; Full memory barrier. All prior stores globally visible before CTX_SWITCH executes.</span>
+</div>
+
+<!-- CTX_SAVE CAP, SP -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x0(CTX_SAVE) Rd=CAP Rs1=SP → 0x60E60000">
+  <span class="asm-addr">FFFF:00B8</span>
+  <span class="asm-bytes">60 E6 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CTX_SAVE</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="reg">SP</span>
+  </div>
+  <span class="asm-comment">; Save all registers of CURRENT task to its kernel stack context block.</span>
+</div>
+
+<!-- CTX_SWITCH CAP, R1 — THE core operation -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x2(CTX_SWITCH) Rd=CAP Rs1=R1 → 0x62E04000">
+  <span class="asm-addr">FFFF:00BC</span>
+  <span class="asm-bytes">62 E0 40 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CTX_SWITCH</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; ★ ATOMIC SWITCH: swap SP, capability ring, page table base to new task's TCB (R1).</span>
+</div>
+
+<!-- CAP_UNSEAL CAP, R1 -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xB(CAP_UNSEAL) Rd=CAP Rs1=R1 → 0x6BE04000">
+  <span class="asm-addr">FFFF:00C0</span>
+  <span class="asm-bytes">6B E0 40 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CAP_UNSEAL</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; Unseal new task's capability ring. It now has access to its own memory regions.</span>
+</div>
+
+<!-- CTX_LOAD CAP, SP -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x1(CTX_LOAD) Rd=CAP Rs1=SP → 0x61E60000">
+  <span class="asm-addr">FFFF:00C4</span>
+  <span class="asm-bytes">61 E6 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CTX_LOAD</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="reg">SP</span>
+  </div>
+  <span class="asm-comment">; Restore all registers of the NEW task from its saved context block.</span>
+</div>
+
+<!-- RET LR -->
+<div class="asm-row" title="Encoding: Maj=0x5 Min=0x2(RET) Rd=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:00C8</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Return into NEW task's execution at the point it was last preempted.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 5. PAGE FAULT ══════════ -->
+<div id="page_fault" class="asm-section-header">
+  <span class="fn-name">_page_fault</span>
+  <span class="fn-addr">0xFFFF00D8</span>
+  <span class="fn-desc">TLB miss / page-not-present fault — allocate and map a physical page</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Triggered by MMU on TLB miss or access violation. CSR[0x70] = faulting VA.
+  ;; CSR[0x71] = fault reason bits: [0]=not_present, [1]=write_fault, [2]=exec_fault.
+  ;; For "not present": allocate a physical page, build a PTE, load into TLB via TLB_LOAD.
+  ;; For access violations: kill the offending task (not shown here — branches to _kill).
+</div>
+
+<!-- CSR_READ R1, CSR[0x70] -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xC Rd=R1 Imm=0x70 → 0x6C080070">
+  <span class="asm-addr">FFFF:00D8</span>
+  <span class="asm-bytes">6C 08 00 70</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_READ</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="imm">CSR[0x70]</span>
+  </div>
+  <span class="asm-comment">; R1 ← FAULT_VADDR. The virtual address that triggered the page fault.</span>
+</div>
+
+<!-- CSR_READ R2, CSR[0x71] -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xC Rd=R2 Imm=0x71 → 0x6C100071">
+  <span class="asm-addr">FFFF:00DC</span>
+  <span class="asm-bytes">6C 10 00 71</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_READ</span>
+    <span class="reg">R2</span><span class="punct">, </span><span class="imm">CSR[0x71]</span>
+  </div>
+  <span class="asm-comment">; R2 ← FAULT_REASON. Encodes why the MMU faulted (not present, write, exec).</span>
+</div>
+
+<!-- ANDI R3, R2, 0x01 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x4(AND) Rd=R3 Rs1=R2 Imm=1 → 0x14188001">
+  <span class="asm-addr">FFFF:00E0</span>
+  <span class="asm-bytes">14 18 80 01</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ANDI</span>
+    <span class="reg">R3</span><span class="punct">, </span><span class="reg">R2</span><span class="punct">, </span><span class="imm">0x01</span>
+  </div>
+  <span class="asm-comment">; R3 ← R2 &amp; 1 = isolate "page not present" bit from fault reason.</span>
+</div>
+
+<!-- BEQ R3, R0, _access_violation -->
+<div class="asm-row" title="Encoding: Maj=0x4 Min=0x0(BEQ) Rs1=R3 Rs2=R0 Imm=+0x20 → 0x40180020">
+  <span class="asm-addr">FFFF:00E4</span>
+  <span class="asm-bytes">40 18 00 20</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BEQ</span>
+    <span class="reg">R3</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="sym">_access_violation</span>
+  </div>
+  <span class="asm-comment">; If "not present" bit is 0 → it's a real access violation. Branch to kill handler.</span>
+</div>
+
+<!-- CALLL LR, _alloc_page -->
+<div class="asm-row" title="Encoding: Maj=0x5 Min=0x6 Format J: Rd=LR Imm19=+0x60 → 0x56D00060">
+  <span class="asm-addr">FFFF:00E8</span>
+  <span class="asm-bytes">56 D0 00 60</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">CALLL</span>
+    <span class="reg">LR</span><span class="punct">, </span><span class="sym">_alloc_page</span>
+  </div>
+  <span class="asm-comment">; Allocate one physical page (4 KiB). Returns PA in R1 (our convention). May block.</span>
+</div>
+
+<!-- SHRI R8, R1, 12 → PFN -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x8(SHR) Rd=R8 Rs1=R1 Imm=12 → 0x1844000C">
+  <span class="asm-addr">FFFF:00EC</span>
+  <span class="asm-bytes">18 44 00 0C</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">SHRI</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">R1</span><span class="punct">, </span><span class="imm">12</span>
+  </div>
+  <span class="asm-comment">; R8 ← R1 &gt;&gt; 12 = Page Frame Number. Drop byte-offset bits from physical address.</span>
+</div>
+
+<!-- ORI R8, R8, 0x03 — set PTE flags: present + writable -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x5(OR) Rd=R8 Rs1=R8 Imm=3 → 0x15440003">
+  <span class="asm-addr">FFFF:00F0</span>
+  <span class="asm-bytes">15 44 00 03</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ORI</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">R8</span><span class="punct">, </span><span class="imm">0x03</span>
+  </div>
+  <span class="asm-comment">; Set PTE flags: bit0=PRESENT, bit1=WRITABLE. Builds a valid page table entry.</span>
+</div>
+
+<!-- TLB_LOAD R1(VA), R8(PTE) -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x5(TLB_LOAD) Rs1=R1 Rs2=R8 → 0x65005000">
+  <span class="asm-addr">FFFF:00F4</span>
+  <span class="asm-bytes">65 00 50 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">TLB_LOAD</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="reg">R8</span>
+  </div>
+  <span class="asm-comment">; Install TLB entry: VA=R1 → PTE=R8. Broadcasts to all cores in this ASID group.</span>
+</div>
+
+<!-- INT_RETURN -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x8 → 0x68000000">
+  <span class="asm-addr">FFFF:00F8</span>
+  <span class="asm-bytes">68 00 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">INT_RETURN</span>
+  </div>
+  <span class="asm-comment">; Resume the faulting instruction. MMU retries the access — now hits the new TLB entry.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 6. SPINLOCK ══════════ -->
+<div id="spinlock" class="asm-section-header">
+  <span class="fn-name">_spinlock_acquire</span>
+  <span class="fn-addr">0xFFFF0108</span>
+  <span class="fn-desc">Ticket-free test-and-set spinlock using Load-Linked / Store-Conditional</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; HELIX uses LL/SC (Load-Linked / Store-Conditional) for lock-free primitives.
+  ;; AMOLL monitors the cache line; AMOSC writes only if no other core modified it.
+  ;; This is stronger than pure CAS — immune to the ABA problem for single-word locks.
+  ;; R1 = address of the lock word (0=free, 1=held).
+  ;;
+  ;; AMOSC result convention: Rd ← 0 on SUCCESS, non-zero on FAILURE (reservation lost).
+  ;; This matches RISC-V SC semantics. Branch BNE Rs1, R0 → retry on failure.
+</div>
+
+<!-- .retry: AMOLL R3, [R1] -->
+<div class="asm-label-row">.retry:</div>
+<div class="asm-row" title="Encoding: Maj=0x7 Min=0x6(AMOLL) Rd=R3 Rs1=R1 → 0x76184000">
+  <span class="asm-addr">FFFF:0108</span>
+  <span class="asm-bytes">76 18 40 00</span>
+  <div class="asm-mnemonic t-atomic">
+    <span class="mn t-atomic">AMOLL</span>
+    <span class="reg">R3</span><span class="punct">, [</span><span class="reg">R1</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; Load-Linked: R3 ← mem[R1]. CPU marks this cache line with an "LL reservation".</span>
+</div>
+
+<!-- BNE R3, R0, .retry -->
+<div class="asm-row" title="Encoding: Maj=0x4 Min=0x1(BNE) Rs1=R3 Rs2=R0 Imm=-8 → 0x41183FF8">
+  <span class="asm-addr">FFFF:010C</span>
+  <span class="asm-bytes">41 18 3F F8</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNE</span>
+    <span class="reg">R3</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="sym">.retry</span>
+  </div>
+  <span class="asm-comment">; If lock != 0 (held), spin. Stays in L1 cache — burns cycles, not bandwidth.</span>
+</div>
+
+<!-- ADDI R4, R0, 1 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x0(ADD) Rd=R4 Rs1=R0 Imm=1 → 0x10200001">
+  <span class="asm-addr">FFFF:0110</span>
+  <span class="asm-bytes">10 20 00 01</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="imm">1</span>
+  </div>
+  <span class="asm-comment">; R4 ← 1 (the "locked" value to write). Prepared outside AMOSC for speed.</span>
+</div>
+
+<!-- AMOSC R4, [R1] -->
+<div class="asm-row" title="Encoding: Maj=0x7 Min=0x7(AMOSC) Rd=R4 Rs1=R1 → 0x77204000">
+  <span class="asm-addr">FFFF:0114</span>
+  <span class="asm-bytes">77 20 40 00</span>
+  <div class="asm-mnemonic t-atomic">
+    <span class="mn t-atomic">AMOSC</span>
+    <span class="reg">R4</span><span class="punct">, [</span><span class="reg">R1</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; Store-Conditional: if LL reservation valid, write 1 to lock. R4 ← 0 on success, non-zero on failure.</span>
+</div>
+
+<!-- BNE R4, R0, .retry -->
+<div class="asm-row" title="Encoding: Maj=0x4 Min=0x1(BNE) Rs1=R4 Rs2=R0 Imm=-20 → 0x41203FEC">
+  <span class="asm-addr">FFFF:0118</span>
+  <span class="asm-bytes">41 20 3F EC</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNE</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="sym">.retry</span>
+  </div>
+  <span class="asm-comment">; SC failed (reservation lost = contention). Restart full LL/SC sequence from top.</span>
+</div>
+
+<!-- FENCE -->
+<div class="asm-row" title="Encoding: Maj=0x7 Min=0x8(FENCE) → 0x78000000">
+  <span class="asm-addr">FFFF:011C</span>
+  <span class="asm-bytes">78 00 00 00</span>
+  <div class="asm-mnemonic t-atomic">
+    <span class="mn t-atomic">FENCE</span>
+  </div>
+  <span class="asm-comment">; Acquire fence. All subsequent loads/stores see effects of the successful SC write.</span>
+</div>
+
+<!-- RET LR -->
+<div class="asm-row" title="Encoding: Maj=0x5 Min=0x2 Rd=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:0120</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Lock acquired. Return to caller. Critical section begins on the next instruction.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 6b. SPINLOCK RELEASE ══════════ -->
+<div id="spinlock_rel" class="asm-section-header">
+  <span class="fn-name">_spinlock_release</span>
+  <span class="fn-addr">0xFFFF0128</span>
+  <span class="fn-desc">Release a previously acquired spinlock — four instructions</span>
+</div>
+
+<!-- FENCE -->
+<div class="asm-row" title="0x78000000">
+  <span class="asm-addr">FFFF:0128</span>
+  <span class="asm-bytes">78 00 00 00</span>
+  <div class="asm-mnemonic t-atomic">
+    <span class="mn t-atomic">FENCE</span>
+  </div>
+  <span class="asm-comment">; Release fence. All stores in the critical section are visible before unlock.</span>
+</div>
+
+<!-- ST64 [R1+0], R0 — write 0 to release -->
+<div class="asm-row" title="Encoding: Maj=0x3 Min=0x0 Rs_src=R0 Rs_base=R1 Imm=0 → 0x30004000">
+  <span class="asm-addr">FFFF:012C</span>
+  <span class="asm-bytes">30 00 40 00</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">ST64</span>
+    <span class="punct">[</span><span class="reg">R1</span><span class="imm">+0</span><span class="punct">], </span><span class="reg">R0</span>
+  </div>
+  <span class="asm-comment">; mem[R1] ← 0. Atomic word-store releases the lock. Waiting cores see 0 on next LL.</span>
+</div>
+
+<!-- FENCE -->
+<div class="asm-row" title="0x78000000">
+  <span class="asm-addr">FFFF:0130</span>
+  <span class="asm-bytes">78 00 00 00</span>
+  <div class="asm-mnemonic t-atomic">
+    <span class="mn t-atomic">FENCE</span>
+  </div>
+  <span class="asm-comment">; Ensure unlock store propagates to all cores before caller continues.</span>
+</div>
+
+<!-- RET LR -->
+<div class="asm-row" title="0x52D00000">
+  <span class="asm-addr">FFFF:0134</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Return. Spinning cores will now win their AMOLL and proceed.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 7. PAGE ALLOCATOR ══════════ -->
+<div id="alloc_page" class="asm-section-header">
+  <span class="fn-name">_alloc_page</span>
+  <span class="fn-addr">0xFFFF0148</span>
+  <span class="fn-desc">Physical page allocator — pops from free-list in O(1)</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Physical memory managed as a singly-linked free list stored IN the pages themselves.
+  ;; Each free 4 KiB page's first 8 bytes = pointer to next free page (or NULL).
+  ;; CSR[0x80] = free_list_head. Returns PA of allocated page in R1. NULL → OOM.
+  ;; NOTE: Caller must hold the physical memory spinlock before entering —
+  ;; the LD64/ST64 pair is NOT atomic and races on SMP without external serialization.
+  ;; This is the same design used in xv6 and FreeBSD — proven and cache-friendly.
+</div>
+
+<!-- LD64 R8, [CSR+0x80] -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=R8 Rs1=CSR(R30) Imm=0x80 → 0x20478080">
+  <span class="asm-addr">FFFF:0148</span>
+  <span class="asm-bytes">20 47 80 80</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R8</span><span class="punct">, [</span><span class="reg">CSR</span><span class="imm">+0x80</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R8 ← FREE_LIST_HEAD. The physical address of the next available free page.</span>
+</div>
+
+<!-- BEQ R8, R0, _oom -->
+<div class="asm-row" title="Encoding: Maj=0x4 Min=0x0(BEQ) Rs1=R8 Rs2=R0 Imm=+0x40 → 0x40400040">
+  <span class="asm-addr">FFFF:014C</span>
+  <span class="asm-bytes">40 40 00 40</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BEQ</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="sym">_oom_handler</span>
+  </div>
+  <span class="asm-comment">; Free list is NULL → out of physical memory. Branch to OOM killer / swap daemon.</span>
+</div>
+
+<!-- LD64 R9, [R8+0] — read next pointer -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=R9 Rs1=R8 Imm=0 → 0x204A0000">
+  <span class="asm-addr">FFFF:0150</span>
+  <span class="asm-bytes">20 4A 00 00</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R9</span><span class="punct">, [</span><span class="reg">R8</span><span class="imm">+0</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R9 ← mem[R8]. Read the "next free page" pointer stored at head of free page.</span>
+</div>
+
+<!-- ST64 [CSR+0x80], R9 — pop head off free list -->
+<div class="asm-row" title="Encoding: Maj=0x3 Min=0x0 Rs_src=R9 Rs_base=CSR Imm=0x80 → 0x304F8080">
+  <span class="asm-addr">FFFF:0154</span>
+  <span class="asm-bytes">30 4F 80 80</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">ST64</span>
+    <span class="punct">[</span><span class="reg">CSR</span><span class="imm">+0x80</span><span class="punct">], </span><span class="reg">R9</span>
+  </div>
+  <span class="asm-comment">; FREE_LIST_HEAD ← R9. Pop R8 from the free list. List now points to the next page.</span>
+</div>
+
+<!-- ADDI R1, R8, 0 — move result to R1 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x0 Rd=R1 Rs1=R8 Imm=0 → 0x100A0000">
+  <span class="asm-addr">FFFF:0158</span>
+  <span class="asm-bytes">10 0A 00 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">R1</span><span class="punct">, </span><span class="reg">R8</span><span class="punct">, </span><span class="imm">0</span>
+  </div>
+  <span class="asm-comment">; R1 ← R8. Move allocated page address to return-value register (caller convention).</span>
+</div>
+
+<!-- RET LR -->
+<div class="asm-row" title="0x52D00000">
+  <span class="asm-addr">FFFF:015C</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Return PA of allocated page in R1. Caller must zero the page before use.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 8. SYSCALL DISPATCH ══════════ -->
+<div id="syscall" class="asm-section-header">
+  <span class="fn-name">_syscall_dispatch</span>
+  <span class="fn-addr">0xFFFF0178</span>
+  <span class="fn-desc">System call handler — validates, dispatches, returns to user ring</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Entered via SYSCALL instruction from user-ring (privilege level 3 → 0 transition).
+  ;; Hardware saves user PC and flags automatically. CSR[0x90] = syscall number (0-255).
+  ;; We validate the number, check the task's capability ring has the right permissions,
+  ;; look up the handler in the syscall table, call it, then SYSRET to user ring.
+</div>
+
+<!-- CSR_READ R8, CSR[0x90] — read syscall number -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0xC Rd=R8 Imm=0x90 → 0x6C400090">
+  <span class="asm-addr">FFFF:0178</span>
+  <span class="asm-bytes">6C 40 00 90</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_READ</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="imm">CSR[0x90]</span>
+  </div>
+  <span class="asm-comment">; R8 ← SYSCALL_NUMBER. The number the user process placed in the call register.</span>
+</div>
+
+<!-- ADDI R9, R0, 255 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x0 Rd=R9 Rs1=R0 Imm=255 → 0x104800FF">
+  <span class="asm-addr">FFFF:017C</span>
+  <span class="asm-bytes">10 48 00 FF</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">R9</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="imm">255</span>
+  </div>
+  <span class="asm-comment">; R9 ← 255. Max valid syscall number. Anything higher is an invalid call.</span>
+</div>
+
+<!-- BGT R8, R9, _invalid_syscall -->
+<div class="asm-row" title="Encoding: Maj=0x4 Min=0x3(BGT) Rs1=R8 Rs2=R9 Imm=+0x30 → 0x43424030">
+  <span class="asm-addr">FFFF:0180</span>
+  <span class="asm-bytes">43 42 40 30</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BGT</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">R9</span><span class="punct">, </span><span class="sym">_invalid_syscall</span>
+  </div>
+  <span class="asm-comment">; If R8 &gt; 255 → invalid syscall. Branch to handler that sends SIGSYS to caller.</span>
+</div>
+
+<!-- CAP_CHECK R8, CAP — validate capability ring, result in R8 -->
+<div class="asm-row" title="Encoding: Maj=0x6 Min=0x9(CAP_CHECK) Rd=R8 Rs1=R28(CAP) → 0x69470000">
+  <span class="asm-addr">FFFF:0184</span>
+  <span class="asm-bytes">69 47 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CAP_CHECK</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">CAP</span>
+  </div>
+  <span class="asm-comment">; Sets processor flag=1 if capability check passes; flag=0 if denied. Result in flag register only — Rd field encodes the checked cap slot, not a destination.</span>
+</div>
+
+<!-- BNF _cap_denied — branch if CAP_CHECK cleared the flag (denied) -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x7(BNF) Imm=+0x20 → 0x47000020">
+  <span class="asm-addr">FFFF:0188</span>
+  <span class="asm-bytes">47 00 00 20</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNF</span>
+    <span class="sym">_cap_denied</span>
+  </div>
+  <span class="asm-comment">; Flag clear (flag=0) = capability denied. Branch to handler that sends SIGSEGV.</span>
+</div>
+
+<!-- LD64 R9, [CSR+0xA0] — load syscall table base -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=R9 Rs1=CSR Imm=0xA0 → 0x204F80A0">
+  <span class="asm-addr">FFFF:018C</span>
+  <span class="asm-bytes">20 4F 80 A0</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R9</span><span class="punct">, [</span><span class="reg">CSR</span><span class="imm">+0xA0</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R9 ← SYSCALL_TABLE_BASE. Points to 256-entry table of 8-byte handler function ptrs.</span>
+</div>
+
+<!-- SHLI R8, R8, 3 — multiply syscall# by 8 -->
+<div class="asm-row" title="Encoding: Maj=0x1 Min=0x7(SHL) Rd=R8 Rs1=R8 Imm=3 → 0x17420003">
+  <span class="asm-addr">FFFF:0190</span>
+  <span class="asm-bytes">17 42 00 03</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">SHLI</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">R8</span><span class="punct">, </span><span class="imm">3</span>
+  </div>
+  <span class="asm-comment">; R8 ← syscall# × 8. Scale to byte offset in the 64-bit pointer table.</span>
+</div>
+
+<!-- ADD R9, R9, R8 -->
+<div class="asm-row" title="Encoding: Maj=0x0 Min=0x0 Rd=R9 Rs1=R9 Rs2=R8 → 0x004A5000">
+  <span class="asm-addr">FFFF:0194</span>
+  <span class="asm-bytes">00 4A 50 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADD</span>
+    <span class="reg">R9</span><span class="punct">, </span><span class="reg">R9</span><span class="punct">, </span><span class="reg">R8</span>
+  </div>
+  <span class="asm-comment">; R9 ← table_base + (syscall# × 8). Address of this syscall's handler slot.</span>
+</div>
+
+<!-- LD64 R9, [R9+0] — deref to handler fn ptr -->
+<div class="asm-row" title="Encoding: Maj=0x2 Min=0x0 Rd=R9 Rs1=R9 Imm=0 → 0x204A4000">
+  <span class="asm-addr">FFFF:0198</span>
+  <span class="asm-bytes">20 4A 40 00</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R9</span><span class="punct">, [</span><span class="reg">R9</span><span class="imm">+0</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R9 ← *syscall_table[R8]. Dereference to get the actual kernel function pointer.</span>
+</div>
+
+<!-- CALL LR, R9 — dispatch to handler -->
+<div class="asm-row" title="Encoding: Maj=0x5 Min=0x1(CALL) Format JR: Rd=LR Rs1=R9 Imm9=0 → 0x51D24000">
+  <span class="asm-addr">FFFF:019C</span>
+  <span class="asm-bytes">51 D2 40 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">CALL</span>
+    <span class="reg">LR</span><span class="punct">, </span><span class="reg">R9</span>
+  </div>
+  <span class="asm-comment">; Indirect call to the specific syscall handler (e.g., sys_read, sys_mmap, sys_fork).</span>
+</div>
+
+<!-- SYSRET — return to user ring -->
+<div class="asm-row" title="Encoding: Maj=0x5 Min=0x4(SYSRET) → 0x54000000">
+  <span class="asm-addr">FFFF:01A0</span>
+  <span class="asm-bytes">54 00 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">SYSRET</span>
+  </div>
+  <span class="asm-comment">; ★ Atomically: privilege level 0→3, restore user PC, restore user capability ring.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ 9. GRAPH DEPENDENCY RESOLVER ══════════ -->
+<div id="graph_sched" class="asm-section-header">
+  <span class="fn-name" style="color:var(--c-graph)">_graph_scheduler</span>
+  <span class="fn-addr" style="color:var(--c-graph)">0xFFFF01B8</span>
+  <span class="fn-desc">Graph dependency resolver — produces topologically-sorted task list for AI dispatch</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; HELIX-64 v4.0: the graph scheduler is NOT a standalone dispatcher — it is the
+  ;; dependency-resolution layer that feeds structured task data to _ai_model_dispatch.
+  ;; The AI model receives the topologically sorted task list and makes all final
+  ;; scheduling decisions. GTOPO_SORT gives the model a conflict-free candidate order;
+  ;; the model decides which tasks actually run, in what sequence, and on which cores.
+  ;; GCYCLE_DET runs first to catch deadlocks before the model ever sees the graph.
+  ;;
+  ;; SECURITY: GEDGE_ADD and GNODE_ALLOC are ring-0 only — the CAP register
+  ;; must hold a kernel capability or the instruction raises a privilege fault.
+  ;; This prevents user tasks from injecting cycles or forging dependencies
+  ;; before GCYCLE_DET can detect them.
+  ;;
+  ;; GRF[0] = root of global task dependency graph
+  ;; GRF[1] = scratch node handle during alloc
+  ;; R1     = current task control block (TCB) pointer
+  ;; R2     = task priority weight
+  ;; R3     = sorted dispatch list head pointer (output of GTOPO_SORT → passed to AI)
+</div>
+
+<!-- GNODE_ALLOC GRF1, R1 — allocate node for incoming TCB -->
+<div class="asm-row" title="Encoding: Maj=0xC Min=0x0(GNODE_ALLOC) Rd=GRF1 Rs1=R1 → 0xC0040800">
+  <span class="asm-addr">FFFF:01B8</span>
+  <span class="asm-bytes">C0 04 08 00</span>
+  <div class="asm-mnemonic t-graph">
+    <span class="mn t-graph">GNODE_ALLOC</span>
+    <span class="reg">GRF1</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; GRF1 ← new graph node with TCB payload from R1. RING-0 ONLY. O(1) HW alloc.</span>
+</div>
+
+<!-- GWEIGHT_SET GRF1, R2 — apply priority weight to node -->
+<div class="asm-row" title="Encoding: Maj=0xC Min=0xB(GWEIGHT_SET) Rd=GRF1 Rs1=R2 → 0xCB041000">
+  <span class="asm-addr">FFFF:01BC</span>
+  <span class="asm-bytes">CB 04 10 00</span>
+  <div class="asm-mnemonic t-graph">
+    <span class="mn t-graph">GWEIGHT_SET</span>
+    <span class="reg">GRF1</span><span class="punct">, </span><span class="reg">R2</span>
+  </div>
+  <span class="asm-comment">; Node weight ← R2 (task priority 0-255). Used by GPATH_FIND for priority scheduling.</span>
+</div>
+
+<!-- GEDGE_ADD GRF0, GRF1, R0 — link new task into root graph -->
+<div class="asm-row" title="Encoding: Maj=0xC Min=0x1(GEDGE_ADD) Rs1=GRF0 Rs2=GRF1 Rs3=R0 → 0xC1000400">
+  <span class="asm-addr">FFFF:01C0</span>
+  <span class="asm-bytes">C1 00 04 00</span>
+  <div class="asm-mnemonic t-graph">
+    <span class="mn t-graph">GEDGE_ADD</span>
+    <span class="reg">GRF0</span><span class="punct">, </span><span class="reg">GRF1</span><span class="punct">, </span><span class="reg">R0</span>
+  </div>
+  <span class="asm-comment">; Edge GRF0→GRF1, weight=0 (unconditional dep). RING-0 ONLY — faults if CAP≠kernel.</span>
+</div>
+
+<!-- GCYCLE_DET R8, GRF0 — deadlock check before sort -->
+<div class="asm-row" title="Encoding: Maj=0xC Min=0x9(GCYCLE_DET) Rd=R8 Rs1=GRF0 → 0xC9400000">
+  <span class="asm-addr">FFFF:01C4</span>
+  <span class="asm-bytes">C9 40 00 00</span>
+  <div class="asm-mnemonic t-graph">
+    <span class="mn t-graph">GCYCLE_DET</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">GRF0</span>
+  </div>
+  <span class="asm-comment">; R8 ← cycle count. HW DFS traversal detects back-edges in O(V+E). 0 = no deadlock.</span>
+</div>
+
+<!-- BNE R8, R0, _deadlock_abort -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x1(BNE) Rs1=R8 Rs2=R0 Imm=+0x50 → 0x41400050">
+  <span class="asm-addr">FFFF:01C8</span>
+  <span class="asm-bytes">41 40 00 50</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNE</span>
+    <span class="reg">R8</span><span class="punct">, </span><span class="reg">R0</span><span class="punct">, </span><span class="sym">_deadlock_abort</span>
+  </div>
+  <span class="asm-comment">; Cycle detected → abort dispatch, send SIGDEADLOCK to all participating tasks.</span>
+</div>
+
+<!-- GTOPO_SORT R3, GRF0 — produce dispatch order -->
+<div class="asm-row" title="Encoding: Maj=0xC Min=0x7(GTOPO_SORT) Rd=R3 Rs1=GRF0 → 0xC7180000">
+  <span class="asm-addr">FFFF:01CC</span>
+  <span class="asm-bytes">C7 18 00 00</span>
+  <div class="asm-mnemonic t-graph">
+    <span class="mn t-graph">GTOPO_SORT</span>
+    <span class="reg">R3</span><span class="punct">, </span><span class="reg">GRF0</span>
+  </div>
+  <span class="asm-comment">; R3 ← ptr to sorted TCB list. HW Kahn's algorithm on GRF. Single-cycle for ≤64 nodes.</span>
+</div>
+
+<!-- GADJ_LOAD R4, GRF0 — load adjacency list for ready-queue generation -->
+<div class="asm-row" title="Encoding: Maj=0xC Min=0x3(GADJ_LOAD) Rd=R4 Rs1=GRF0 → 0xC3200000">
+  <span class="asm-addr">FFFF:01D0</span>
+  <span class="asm-bytes">C3 20 00 00</span>
+  <div class="asm-mnemonic t-graph">
+    <span class="mn t-graph">GADJ_LOAD</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="reg">GRF0</span>
+  </div>
+  <span class="asm-comment">; R4 ← pointer to adjacency list of root. Iterating this gives all immediately-runnable tasks.</span>
+</div>
+
+<!-- GREDUCE R5, GRF0, #SUM_WEIGHT — compute total graph weight for load balancing -->
+<div class="asm-row" title="Encoding: Maj=0xC Min=0x8(GREDUCE) Rd=R5 Rs1=GRF0 Imm=SUM → 0xC8280001">
+  <span class="asm-addr">FFFF:01D4</span>
+  <span class="asm-bytes">C8 28 00 01</span>
+  <div class="asm-mnemonic t-graph">
+    <span class="mn t-graph">GREDUCE</span>
+    <span class="reg">R5</span><span class="punct">, </span><span class="reg">GRF0</span><span class="punct">, </span><span class="imm">#SUM_WEIGHT</span>
+  </div>
+  <span class="asm-comment">; R5 ← Σ(node weights) across entire graph. Used for CPU load-balance across cores.</span>
+</div>
+
+<!-- CTX_SWITCH R3 — hardware context-switch to first ready task -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0x2(CTX_SWITCH) Rs1=R3 → 0x62018000">
+  <span class="asm-addr">FFFF:01D8</span>
+  <span class="asm-bytes">62 01 80 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CTX_SWITCH</span>
+    <span class="reg">R3</span>
+  </div>
+  <span class="asm-comment">; ★ Hardware atomically swaps to first task in topologically-sorted dispatch list. Single-operand form: Rs1=TCB ptr, CAP updated implicitly from TCB.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     10. AI MODEL DISPATCH  (HELIX-64 v4.0 AI ISA)
+     ══════════════════════════════════════════════════════════════ -->
+<div id="ai_dispatch" class="asm-section-header">
+  <span class="fn-name" style="color:var(--c-ai)">_ai_model_dispatch</span>
+  <span class="fn-addr" style="color:var(--c-ai)">0xFFFF0248</span>
+  <span class="fn-desc">AI-as-OS core — every syscall, every allocation, every decision, 5 instructions</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; v4.0: all tensor choreography is hidden behind GENERATE.
+  ;; Five instructions: ensure the domain node is resident, run generation,
+  ;; look up the returned action token in the dispatch table, call the handler.
+  ;; What used to be 14 manual tensor ops (EMBED→KV→ATTN→MATMUL×5→SOFTMAX→
+  ;; SAMPLE→KV_WR→TENSOR_ST) is now a single macro-instruction. The NPU
+  ;; handles forward pass, KV-cache append, audit log, and delta-checkpoint.
+  ;;
+  ;; NRF[0] = boot/personality node (always resident)
+  ;; NRF[1] = active domain — hot-swapped at capability boundaries
+  ;; NRF[2] = user-adaptation node — grows more personal; flushed by NODE_COMMIT
+  ;; R9  = input token (syscall#, user prompt hash, or HW event code)
+  ;; R10 = output action token (returned by GENERATE)
+  ;; R11 = dispatch table entry pointer
+</div>
+
+<!-- NODE_LOAD NRF[1] — ensure active domain node is resident -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0xC(NODE_LOAD) Rd=NRF1 → 0xDC080000">
+  <span class="asm-addr">FFFF:0248</span>
+  <span class="asm-bytes">DC 08 00 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">NODE_LOAD</span>
+    <span class="reg">NRF[1]</span>
+  </div>
+  <span class="asm-comment">; Ensure active domain node is in NPU SRAM. No-op on cache hit (~1 cycle); cold miss triggers DMA from HBM.</span>
+</div>
+
+<!-- GENERATE R10, TRF[1], #1|TOP_P — single-token OS decision -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0xF(GENERATE) Rd=R10 Rs1=TRF1 Imm=0x015A → 0xDF500C5A">
+  <span class="asm-addr">FFFF:024C</span>
+  <span class="asm-bytes">DF 50 0C 5A</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">GENERATE</span>
+    <span class="reg">R10</span><span class="punct">, </span><span class="reg">TRF[1]</span><span class="punct">, </span><span class="imm">#1|TOP_P_0.9</span>
+  </div>
+  <span class="asm-comment">; R10 ← one sampled OS action token. Hides: EMBED→INFER_STEP×N→SOFTMAX→SAMPLE→KV_CACHE_WR→audit. The model decides what happens next.</span>
+</div>
+
+<!-- LD64 R11, [CSR+0xF0] — load AI action dispatch table base -->
+<div class="asm-row" title="Encoding: Maj=0x2(LOAD) Min=0x0 Rd=R11 Rs1=CSR Imm=0xF0 → 0x205F80F0">
+  <span class="asm-addr">FFFF:0250</span>
+  <span class="asm-bytes">20 5F 80 F0</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R11</span><span class="punct">, [</span><span class="reg">CSR</span><span class="imm">+0xF0</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R11 ← AI_ACTION_TABLE base. 65536-entry table; each entry is a 64-bit kernel fn ptr.</span>
+</div>
+
+<!-- LD64 R11, [R11 + R10*8] — dereference action token to handler -->
+<div class="asm-row" title="Encoding: Maj=0x2(LOAD) Min=0x3(LD64_SCALED) Rd=R11 Rs1=R11 Rs2=R10 Scale=8 → 0x235C5803">
+  <span class="asm-addr">FFFF:0254</span>
+  <span class="asm-bytes">23 5C 58 03</span>
+  <div class="asm-mnemonic t-mem">
+    <span class="mn t-mem">LD64</span>
+    <span class="reg">R11</span><span class="punct">, [</span><span class="reg">R11</span><span class="punct"> + </span><span class="reg">R10</span><span class="punct">×</span><span class="imm">8</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; R11 ← action_table[R10]. Single scaled-index load replaces the old SHLI+ADD+LD64 triple.</span>
+</div>
+
+<!-- CALL LR, R11 — execute AI-decided OS action -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x1(CALL) Format JR: Rd=LR Rs1=R11 Imm9=0 → 0x51D25800">
+  <span class="asm-addr">FFFF:0258</span>
+  <span class="asm-bytes">51 D2 58 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">CALL</span>
+    <span class="reg">LR</span><span class="punct">, </span><span class="reg">R11</span>
+  </div>
+  <span class="asm-comment">; Format JR. Execute the kernel primitive the model chose. Low confidence (CSR[0xD9] < threshold) triggers NODE_SWAP before retry.</span>
+</div>
+
+<!-- SYSRET -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x4(SYSRET) → 0x54000000">
+  <span class="asm-addr">FFFF:025C</span>
+  <span class="asm-bytes">54 00 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">SYSRET</span>
+  </div>
+  <span class="asm-comment">; Return to user ring. The model's decision is the kernel's decision. There is no other arbiter.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     11. NEURON FORWARD PASS  (HELIX-64 v4.0 AI ISA)
+     ══════════════════════════════════════════════════════════════ -->
+<div id="neuron_fwd" class="asm-section-header">
+  <span class="fn-name" style="color:var(--c-ai)">_neuron_forward</span>
+  <span class="fn-addr" style="color:var(--c-ai)">0xFFFF02A8</span>
+  <span class="fn-desc">NPU microcode — one transformer layer. Hidden behind GENERATE. Never called directly by OS code.</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; ⚠  MICROCODE — this is what GENERATE expands to inside the NPU.
+  ;; User-space and OS dispatch layers never issue these instructions directly;
+  ;; they call GENERATE and receive a token handle. This listing is shown for
+  ;; architectural transparency only.
+  ;;
+  ;; NOTE: This listing uses NPU-internal TRF aliases TRF[8..10] for the hidden
+  ;; state pipeline. The INFER_STEP sidebar spec uses TRF[3..10] in full sequence;
+  ;; this function represents one layer slice of that sequence.
+  ;;
+  ;; One decoder layer: LayerNorm → fused-QKV Attention → Residual → FFN → Residual.
+  ;; Runs N_LAYERS× per GENERATE call (N_LAYERS baked into NRF[1] metadata).
+  ;; Weights stream from NRF[1]; session deltas accumulate in NRF[2] asynchronously.
+  ;; TRF[8]  = hidden state (modified in-place via residual connections)
+  ;; TRF[9]  = FFN intermediate  ·  TRF[10] = pre-attention residual save
+</div>
+
+<!-- TENSOR_LD TRF8, [R16] — load hidden state from layer input buffer -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x1(TENSOR_LD) Rd=TRF8 Rs1=R16 Imm=0 → 0xD1440000">
+  <span class="asm-addr">FFFF:02A8</span>
+  <span class="asm-bytes">D1 44 00 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">TENSOR_LD</span>
+    <span class="reg">TRF8</span><span class="punct">, [</span><span class="reg">R16</span><span class="imm">+0</span><span class="punct">]</span>
+  </div>
+  <span class="asm-comment">; TRF8 ← hidden_state[layer_in]. Load 256-dim activation from NPU L1 scratchpad.</span>
+</div>
+
+<!-- ADDI TRF10, TRF8, 0 — save pre-norm residual BEFORE LayerNorm -->
+<div class="asm-row" title="Encoding: Maj=0x1(ALU-I) Min=0x0(ADD) Rd=TRF10 Rs1=TRF8 Imm=0 → 0x10544400">
+  <span class="asm-addr">FFFF:02AC</span>
+  <span class="asm-bytes">10 54 44 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADDI</span>
+    <span class="reg">TRF10</span><span class="punct">, </span><span class="reg">TRF8</span><span class="punct">, </span><span class="imm">0</span>
+  </div>
+  <span class="asm-comment">; TRF10 ← x (pre-norm input, pseudo-MOV). MUST precede LAYERNORM — once LN runs in-place, x is gone.</span>
+</div>
+
+<!-- LAYERNORM TRF8, TRF8 — pre-attention norm -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x8(LAYERNORM) Rd=TRF8 Rs1=TRF8 → 0xD8444400">
+  <span class="asm-addr">FFFF:02B0</span>
+  <span class="asm-bytes">D8 44 44 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">LAYERNORM</span>
+    <span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF8</span>
+  </div>
+  <span class="asm-comment">; LN1: TRF8 ← LayerNorm(x) in-place. Pre-norm before attention; x already preserved in TRF10.</span>
+</div>
+
+<!-- ATTN TRF8, TRF8, TRF2 — self-attention with KV cache -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x4(ATTN) Rd=TRF8 Rs1=TRF8 Rs2=TRF2 → 0xD4444400">
+  <span class="asm-addr">FFFF:02B4</span>
+  <span class="asm-bytes">D4 44 44 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">ATTN</span>
+    <span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF2</span>
+  </div>
+  <span class="asm-comment">; TRF8 ← SelfAttention(TRF8, KV=TRF2). HW fused QKV projection + scaled dot-product.</span>
+</div>
+
+<!-- ADD TRF8, TRF8, TRF10 — residual connection post-attention -->
+<div class="asm-row" title="Encoding: Maj=0x0(ALU-R) Min=0x0(ADD) Rd=TRF8 Rs1=TRF8 Rs2=TRF10 → 0x00444500">
+  <span class="asm-addr">FFFF:02B8</span>
+  <span class="asm-bytes">00 44 45 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADD</span>
+    <span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF10</span>
+  </div>
+  <span class="asm-comment">; TRF8 ← Attn(LN(x)) + x. Post-attention residual. TRF10 = original pre-norm x (correct pre-LN residual).</span>
+</div>
+
+<!-- LAYERNORM TRF8, TRF8 — pre-FFN norm -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x8(LAYERNORM) Rd=TRF8 Rs1=TRF8 → 0xD8444400">
+  <span class="asm-addr">FFFF:02BC</span>
+  <span class="asm-bytes">D8 44 44 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">LAYERNORM</span>
+    <span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF8</span>
+  </div>
+  <span class="asm-comment">; LN2: pre-FFN norm in-place. Applied to (Attn(LN(x)) + x); TRF10 still holds original x for second residual.</span>
+</div>
+
+<!-- MATMUL TRF9, TRF8, TRF0 — FFN up-projection (4× expansion) -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x3(MATMUL) Rd=TRF9 Rs1=TRF8 Rs2=TRF0 → 0xD34C4400">
+  <span class="asm-addr">FFFF:02C0</span>
+  <span class="asm-bytes">D3 4C 44 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">MATMUL</span>
+    <span class="reg">TRF9</span><span class="punct">, </span><span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF0</span>
+  </div>
+  <span class="asm-comment">; TRF9 ← TRF8 × W_ffn_up. 256 → 1024 dim expansion. Stored in NPU accumulator tiles.</span>
+</div>
+
+<!-- ACT TRF9, TRF9, #GELU — apply activation function -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x6(ACT) Rd=TRF9 Rs1=TRF9 Imm=GELU → 0xD64C4C01">
+  <span class="asm-addr">FFFF:02C4</span>
+  <span class="asm-bytes">D6 4C 4C 01</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">ACT</span>
+    <span class="reg">TRF9</span><span class="punct">, </span><span class="reg">TRF9</span><span class="punct">, </span><span class="imm">#GELU</span>
+  </div>
+  <span class="asm-comment">; TRF9 ← GELU(TRF9). HW polynomial GELU approximation. Elementwise on 512-bit tile per cycle (matches TRF descriptor width).</span>
+</div>
+
+<!-- MATMUL TRF8, TRF9, TRF1 — FFN down-projection (back to model dim) -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x3(MATMUL) Rd=TRF8 Rs1=TRF9 Rs2=TRF1 → 0xD3444C08">
+  <span class="asm-addr">FFFF:02C8</span>
+  <span class="asm-bytes">D3 44 4C 08</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">MATMUL</span>
+    <span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF9</span><span class="punct">, </span><span class="reg">TRF1</span>
+  </div>
+  <span class="asm-comment">; TRF8 ← TRF9 × W_ffn_down. 1024 → 256. Returns to residual stream dimensionality.</span>
+</div>
+
+<!-- ADD TRF8, TRF8, TRF10 — final residual connection -->
+<div class="asm-row" title="Encoding: Maj=0x0(ALU-R) Min=0x0(ADD) Rd=TRF8 Rs1=TRF8 Rs2=TRF10 → 0x00444500">
+  <span class="asm-addr">FFFF:02CC</span>
+  <span class="asm-bytes">00 44 45 00</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">ADD</span>
+    <span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF8</span><span class="punct">, </span><span class="reg">TRF10</span>
+  </div>
+  <span class="asm-comment">; TRF8 ← FFN(LN2(attn_out + x)) + x. Tied residual: TRF10 still holds original pre-norm x — both residuals add back the same x. Output is complete layer activation for next layer.</span>
+</div>
+
+<!-- TENSOR_ST [R16+8], TRF8 — write layer output to next-layer buffer -->
+<div class="asm-row" title="Encoding: Maj=0xD Min=0x2(TENSOR_ST) Rs1=R16 Rs2=TRF8 Imm=8 → 0xD2084408">
+  <span class="asm-addr">FFFF:02D0</span>
+  <span class="asm-bytes">D2 08 44 08</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">TENSOR_ST</span>
+    <span class="punct">[</span><span class="reg">R16</span><span class="imm">+8</span><span class="punct">], </span><span class="reg">TRF8</span>
+  </div>
+  <span class="asm-comment">; Store layer output to next-layer input buffer. Ping-pong between +0 and +8 offsets.</span>
+</div>
+
+<!-- RET LR — return to layer loop in _ai_model_dispatch -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x2(RET) Rs1=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:02D4</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Return to layer loop. Called N_LAYERS times per GENERATE invocation; GENERATE issues final SOFTMAX + SAMPLE after all layers complete.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     12. DISTRIBUTED SHARD FETCH  (HELIX-64 v4.0 DIST ISA)
+     ══════════════════════════════════════════════════════════════ -->
+<div id="dist_shard" class="asm-section-header">
+  <span class="fn-name" style="color:var(--c-dist)">_dist_shard_fetch</span>
+  <span class="fn-addr" style="color:var(--c-dist)">0xFFFF0300</span>
+  <span class="fn-desc">Async RDMA fetch of a remote weight shard into local NRF staging slot — non-blocking</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; v4.0 multi-node: fetches a weight shard from a peer node into NRF[6] (staging).
+  ;; Called by _ai_model_dispatch before INFER_START when the required shard for a
+  ;; layer is flagged REMOTE_SHARD in the NRF descriptor. Overlaps network transfer
+  ;; with compute on preceding layers. NODE_SYNC blocks only if the fetch is not
+  ;; yet complete when the layer actually needs the shard.
+  ;;
+  ;; R1  = shard_id (encoded: bits[31:16]=node_id, bits[15:0]=layer_index)
+  ;; R2  = target NRF staging slot (typically 6 or 7)
+  ;; R3  = future handle output (used by VERSION_FENCE / NODE_SYNC callers)
+  ;; CSR[0xE1] = local_node_id (read-only; set by firmware at boot)
+  ;; CSR[0xDB] = NODE_FETCH_STATUS bitmap
+</div>
+
+<!-- CAP_CHECK CAP, #DIST_FETCH -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0x9(CAP_CHECK) Rs1=CAP Imm=0x800 → 0x69E00800">
+  <span class="asm-addr">FFFF:0300</span>
+  <span class="asm-bytes">69 E0 08 00</span>
+  <div class="asm-mnemonic t-cap">
+    <span class="mn t-cap">CAP_CHECK</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="imm">#DIST_FETCH</span>
+  </div>
+  <span class="asm-comment">; Verify CAP.permission[11]=DIST_FETCH is set. Sets flag=1 on pass; flag=0 on fail.</span>
+</div>
+
+<!-- BNF → _cap_violation -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x7(BNF) Imm=+0x90 → 0x47000090">
+  <span class="asm-addr">FFFF:0304</span>
+  <span class="asm-bytes">47 00 00 90</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNF</span>
+    <span class="sym">_cap_violation</span>
+  </div>
+  <span class="asm-comment">; Flag clear = CAP check failed → privilege fault. No DIST ops without DIST_FETCH permission.</span>
+</div>
+
+<!-- TOPO_QUERY R4, R1 — check if shard is on a reachable node -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x4(TOPO_QUERY) Rd=R4 Rs1=R1 → 0xF4200800">
+  <span class="asm-addr">FFFF:0308</span>
+  <span class="asm-bytes">F4 20 08 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">TOPO_QUERY</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; R4 ← latency_ns[node_id] from NODE_TOPO CSR table. 0xFFFF = node unreachable (faulted/offline).</span>
+</div>
+
+<!-- CMPI R4, 0xFFFF — check if node is alive -->
+<div class="asm-row" title="Encoding: Maj=0x1(ALU-I) Min=0x2(SUB) Rd=R0 Rs1=R4 Imm=0xFFFF → 0x1200FFFF">
+  <span class="asm-addr">FFFF:030C</span>
+  <span class="asm-bytes">12 00 FF FF</span>
+  <div class="asm-mnemonic t-alu">
+    <span class="mn t-alu">CMPI</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="imm">0xFFFF</span>
+  </div>
+  <span class="asm-comment">; Compare latency against sentinel 0xFFFF. If equal → node is offline; trigger REPLICA_PROMOTE.</span>
+</div>
+
+<!-- BEQ → _replica_promote_path -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x0(BEQ) Imm=+0x20 → 0x40000020">
+  <span class="asm-addr">FFFF:0310</span>
+  <span class="asm-bytes">40 00 00 20</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BEQ</span>
+    <span class="sym">_replica_promote_path</span>
+  </div>
+  <span class="asm-comment">; If unreachable, promote replica shard. Failover path — node failure does not stall inference.</span>
+</div>
+
+<!-- NODE_FETCH R3, R1, R2 — issue async RDMA fetch -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x0(NODE_FETCH) Rd=R3 Rs1=R1 Rs2=R2 → 0xF0180C00">
+  <span class="asm-addr">FFFF:0314</span>
+  <span class="asm-bytes">F0 18 0C 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">NODE_FETCH</span>
+    <span class="reg">R3</span><span class="punct">, </span><span class="reg">R1</span><span class="punct">, </span><span class="reg">R2</span>
+  </div>
+  <span class="asm-comment">; R3 ← future handle. Issues RDMA READ for shard_id (R1) into NRF staging slot (R2). Non-blocking.</span>
+</div>
+
+<!-- CSR_WRITE CSR[0xDB], R3 — register future in fetch-status bitmap -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0xD(CSR_WRITE) Rs1=CSR Imm=0xDB Rs2=R3 → 0x6D00DB03">
+  <span class="asm-addr">FFFF:0318</span>
+  <span class="asm-bytes">6D 00 DB 03</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_WRITE</span>
+    <span class="imm">CSR[0xDB]</span><span class="punct">, </span><span class="reg">R3</span>
+  </div>
+  <span class="asm-comment">; Update NODE_FETCH_STATUS bitmap with future handle. Polled by _dist_shard_fetch callers.</span>
+</div>
+
+<!-- RET LR — return immediately, fetch proceeds in background via RDMA DMA engine -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x2(RET) Rs1=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:031C</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Return immediately. RDMA engine DMA-fills NRF staging slot in background. Caller uses NODE_SYNC.</span>
+</div>
+
+<!-- _replica_promote_path label -->
+<div class="asm-label-row">_replica_promote_path:</div>
+
+<!-- REPLICA_PROMOTE R2, R1 — promote replica on failed node -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x6(REPLICA_PROMOTE) Rd=R2 Rs1=R1 → 0xF6100800">
+  <span class="asm-addr">FFFF:0320</span>
+  <span class="asm-bytes">F6 10 08 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">REPLICA_PROMOTE</span>
+    <span class="reg">R2</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; If NRF[R2].type==REPLICATED: promote best available replica to PRIMARY for shard R1. ≤1 cycle.</span>
+</div>
+
+<!-- RET LR — failover complete, shard now sourced from replica -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x2(RET) Rs1=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:0324</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Failover complete. NRF slot now points to replica. No change visible to caller — shard appears LOCAL.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     13. VERSION MANAGER  (HELIX-64 v4.0 DIST ISA)
+     ══════════════════════════════════════════════════════════════ -->
+<div id="version_mgr" class="asm-section-header">
+  <span class="fn-name" style="color:var(--c-dist)">_version_manager</span>
+  <span class="fn-addr" style="color:var(--c-dist)">0xFFFF0340</span>
+  <span class="fn-desc">Weight version snapshot and coherency fence — prevents mid-generation weight skew across nodes</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; Called at the start of every GENERATE macro invocation by _ai_model_dispatch.
+  ;; Pins a snapshot version into CSR[0xD5] so that all INFER_STEP invocations
+  ;; during one generation pass read a consistent weight state — even if peer nodes
+  ;; commit SHARD_COMMITs mid-pass. Training updates are applied to a shadow version
+  ;; and become globally visible only after VERSION_COMMIT. VERSION_FENCE at the end
+  ;; of the pass ensures the node is ready to receive the next snapshot cleanly.
+  ;;
+  ;; R1 = desired minimum version (caller's expectation; 0 = accept current)
+  ;; R4 = read-back global version from CSR
+  ;; R5 = comparison scratch
+</div>
+
+<!-- INFER_START R0 — pin current global version as snapshot -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x8(INFER_START) Rs1=R0 → 0xF8000000">
+  <span class="asm-addr">FFFF:0340</span>
+  <span class="asm-bytes">F8 00 00 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">INFER_START</span>
+    <span class="reg">R0</span>
+  </div>
+  <span class="asm-comment">; CSR[0xD5] ← GLOBAL_VERSION. Snapshot pinned. All NRF reads until INFER_END see this version.</span>
+</div>
+
+<!-- CSR_READ R4, CSR[0xD5] — read the pinned version -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0xC(CSR_READ) Rd=R4 Imm=0xD5 → 0x6C2000D5">
+  <span class="asm-addr">FFFF:0344</span>
+  <span class="asm-bytes">6C 20 00 D5</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">CSR_READ</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="imm">CSR[0xD5]</span>
+  </div>
+  <span class="asm-comment">; R4 ← pinned snapshot version. Used to verify NRF shard versions before INFER_STEP.</span>
+</div>
+
+<!-- BLT R4, R1, _version_stale — if snapshot < expected, stall for commit -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x4(BLT) Rs1=R4 Rs2=R1 Imm=+0x08 → 0x44204008">
+  <span class="asm-addr">FFFF:0348</span>
+  <span class="asm-bytes">44 20 40 08</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BLT</span>
+    <span class="reg">R4</span><span class="punct">, </span><span class="reg">R1</span><span class="punct">, </span><span class="sym">_version_stale</span>
+  </div>
+  <span class="asm-comment">; If snapshot version &lt; caller's minimum expected version, spin on VERSION_FENCE.</span>
+</div>
+
+<!-- VERSION_FENCE #0 — ensure all NRF slots are at snapshot version -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x3(VERSION_FENCE) Imm=0 → 0xF3000000">
+  <span class="asm-addr">FFFF:034C</span>
+  <span class="asm-bytes">F3 00 00 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">VERSION_FENCE</span>
+    <span class="imm">#0</span>
+  </div>
+  <span class="asm-comment">; Stall until all local NRF[0..7].version ≥ CSR[0xD5]. Drains any pending NODE_FETCH futures.</span>
+</div>
+
+<!-- RET LR — snapshot confirmed, caller may begin INFER_STEP sequence -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x2(RET) Rs1=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:0350</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Snapshot pinned, all shards coherent. _ai_model_dispatch may proceed to GENERATE.</span>
+</div>
+
+<!-- _version_stale label -->
+<div class="asm-label-row">_version_stale:</div>
+
+<!-- VERSION_FENCE R1 — wait until global version reaches caller's minimum -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x3(VERSION_FENCE) Rs1=R1 → 0xF3000800">
+  <span class="asm-addr">FFFF:0354</span>
+  <span class="asm-bytes">F3 00 08 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">VERSION_FENCE</span>
+    <span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; Stall until GLOBAL_VERSION ≥ R1. Triggered when a peer SHARD_COMMIT has not yet propagated.</span>
+</div>
+
+<!-- INFER_START R1 — re-pin snapshot at the now-current version -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x8(INFER_START) Rs1=R1 → 0xF8000800">
+  <span class="asm-addr">FFFF:0358</span>
+  <span class="asm-bytes">F8 00 08 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">INFER_START</span>
+    <span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; Re-pin at updated version. CSR[0xD5] now holds the caller's expected minimum. Retry VERSION_FENCE.</span>
+</div>
+
+<!-- BF → VERSION_FENCE retry (VERSION_FENCE sets flag=1 if it had to stall, indicating version still lagging) -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x2(BF) Imm=-0x0C → 0x42000FF4">
+  <span class="asm-addr">FFFF:035C</span>
+  <span class="asm-bytes">42 00 0F F4</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BF</span>
+    <span class="sym">_version_stale</span>
+  </div>
+  <span class="asm-comment">; If VERSION_FENCE set the stall flag again (version still lagging), loop until satisfied.</span>
+</div>
+
+<!-- RET LR -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x2(RET) Rs1=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:0360</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Version coherent. Return to caller with CSR[0xD5] pinned to the agreed-upon snapshot.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     14. SHARD TRAINER  (HELIX-64 v4.0 DIST ISA — Modular Training)
+     ══════════════════════════════════════════════════════════════ -->
+<div id="shard_trainer" class="asm-section-header">
+  <span class="fn-name" style="color:var(--c-dist)">_shard_trainer</span>
+  <span class="fn-addr" style="color:var(--c-dist)">0xFFFF0380</span>
+  <span class="fn-desc">Modular per-layer training — apply LoRA delta to a single shard without stopping inference</span>
+</div>
+
+<div class="asm-block-comment">
+  ;; v4.0 modular training: applies a rank-r LoRA adapter delta to one weight shard.
+  ;; W_new = W_base + alpha × (A × B), where A and B are rank-r factor matrices.
+  ;; The delta is written to a shadow version. VERSION_COMMIT bumps GLOBAL_VERSION,
+  ;; making the update visible to all nodes at the next INFER_START boundary.
+  ;; Inference on any node is never blocked — training updates are applied between
+  ;; generation passes via the shadow/snapshot protocol in _version_manager.
+  ;;
+  ;; R1  = layer_id (which transformer layer to update; 0..N_LAYERS-1)
+  ;; R2  = adapter_rank r (typical values: 4, 8, 16, 64)
+  ;; TRF[12] = matrix A descriptor (shape: d_model × r)
+  ;; TRF[13] = matrix B descriptor (shape: r × d_model)
+  ;; TRF[14] = alpha scaling factor (scalar descriptor)
+  ;; TRF[15] = output delta descriptor (d_model × d_model)
+  ;; NRF[2]  = user-adaptation staging slot (receives merged delta)
+</div>
+
+<!-- CAP_CHECK CAP, #SHARD_COMMIT -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0x9(CAP_CHECK) Rs1=CAP Imm=0x400 → 0x69E00400">
+  <span class="asm-addr">FFFF:0380</span>
+  <span class="asm-bytes">69 E0 04 00</span>
+  <div class="asm-mnemonic t-cap">
+    <span class="mn t-cap">CAP_CHECK</span>
+    <span class="reg">CAP</span><span class="punct">, </span><span class="imm">#SHARD_COMMIT</span>
+  </div>
+  <span class="asm-comment">; Verify CAP.permission[10]=SHARD_COMMIT. Training is a ring-1 or ring-0 privilege operation.</span>
+</div>
+
+<!-- BNF → _cap_violation -->
+<div class="asm-row" title="Encoding: Maj=0x4(BR) Min=0x7(BNF) Imm=+0xB0 → 0x470000B0">
+  <span class="asm-addr">FFFF:0384</span>
+  <span class="asm-bytes">47 00 00 B0</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">BNF</span>
+    <span class="sym">_cap_violation</span>
+  </div>
+  <span class="asm-comment">; Capability check failed — user ring cannot commit training deltas. Privilege fault.</span>
+</div>
+
+<!-- MATMUL TRF15, TRF12, TRF13 — compute A × B (rank-r outer product = delta matrix) -->
+<div class="asm-row" title="Encoding: Maj=0xD(AI) Min=0x3(MATMUL) Rd=TRF15 Rs1=TRF12 Rs2=TRF13 → 0xD37C6C00">
+  <span class="asm-addr">FFFF:0388</span>
+  <span class="asm-bytes">D3 7C 6C 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">MATMUL</span>
+    <span class="reg">TRF15</span><span class="punct">, </span><span class="reg">TRF12</span><span class="punct">, </span><span class="reg">TRF13</span>
+  </div>
+  <span class="asm-comment">; TRF15 ← A × B. Produces the full-rank delta matrix (d_model × d_model) from rank-r factors.</span>
+</div>
+
+<!-- MATMUL TRF15, TRF15, TRF14 — scale by alpha: delta = alpha × (A × B) -->
+<div class="asm-row" title="Encoding: Maj=0xD(AI) Min=0x3(MATMUL) Rd=TRF15 Rs1=TRF15 Rs2=TRF14 → 0xD37C7E00">
+  <span class="asm-addr">FFFF:038C</span>
+  <span class="asm-bytes">D3 7C 7E 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">MATMUL</span>
+    <span class="reg">TRF15</span><span class="punct">, </span><span class="reg">TRF15</span><span class="punct">, </span><span class="reg">TRF14</span>
+  </div>
+  <span class="asm-comment">; TRF15 ← alpha × TRF15. Scales the delta by the LoRA learning rate (alpha/r). Element-wise broadcast.</span>
+</div>
+
+<!-- SHARD_COMMIT NRF[2], TRF15, R1 — commit delta to shadow version for layer R1 -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x2(SHARD_COMMIT) Rs1=NRF2 Rs2=TRF15 Rs3=R1 → 0xF2027C08">
+  <span class="asm-addr">FFFF:0390</span>
+  <span class="asm-bytes">F2 02 7C 08</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">SHARD_COMMIT</span>
+    <span class="reg">NRF[2]</span><span class="punct">, </span><span class="reg">TRF[15]</span><span class="punct">, </span><span class="reg">R1</span>
+  </div>
+  <span class="asm-comment">; Merge TRF[15] delta into NRF[2] shadow weight for layer_id=R1. W_shadow ← W_base + delta. Atomic merge.</span>
+</div>
+
+<!-- FENCE_AI — drain NPU write-back before VERSION_COMMIT -->
+<div class="asm-row" title="Encoding: Maj=0x6(SYS) Min=0xF(FENCE_AI) → 0x6F000000">
+  <span class="asm-addr">FFFF:0394</span>
+  <span class="asm-bytes">6F 00 00 00</span>
+  <div class="asm-mnemonic t-sys">
+    <span class="mn t-sys">FENCE_AI</span>
+  </div>
+  <span class="asm-comment">; Drain all in-flight NPU ops before committing version. Ensures shadow write is globally visible.</span>
+</div>
+
+<!-- VERSION_COMMIT NRF[2] — bump GLOBAL_VERSION, make delta visible -->
+<div class="asm-row" title="Encoding: Maj=0xF(DIST) Min=0x7(VERSION_COMMIT) Rs1=NRF2 → 0xF7001000">
+  <span class="asm-addr">FFFF:0398</span>
+  <span class="asm-bytes">F7 00 10 00</span>
+  <div class="asm-mnemonic t-dist">
+    <span class="mn t-dist">VERSION_COMMIT</span>
+    <span class="reg">NRF[2]</span>
+  </div>
+  <span class="asm-comment">; GLOBAL_VERSION++. Shadow becomes the new baseline. Visible to all nodes at next INFER_START.</span>
+</div>
+
+<!-- NODE_COMMIT NRF[2] — persist adaptation deltas to enclave storage -->
+<div class="asm-row" title="Encoding: Maj=0xD(AI) Min=0xE(STEP_CHECKPOINT) AUX=0x1(NODE_COMMIT mode) Rs1=NRF2 → 0xDE001001">
+  <span class="asm-addr">FFFF:039C</span>
+  <span class="asm-bytes">DE 00 10 00</span>
+  <div class="asm-mnemonic t-ai">
+    <span class="mn t-ai">NODE_COMMIT</span>
+    <span class="reg">NRF[2]</span>
+  </div>
+  <span class="asm-comment">; Flush NRF[2] adaptation deltas to the hardware-backed persistent enclave. Survives power loss.</span>
+</div>
+
+<!-- RET LR — modular training pass complete for this layer -->
+<div class="asm-row" title="Encoding: Maj=0x5(JMP) Min=0x2(RET) Rs1=LR → 0x52D00000">
+  <span class="asm-addr">FFFF:03A0</span>
+  <span class="asm-bytes">52 D0 00 00</span>
+  <div class="asm-mnemonic t-branch">
+    <span class="mn t-branch">RET</span>
+    <span class="reg">LR</span>
+  </div>
+  <span class="asm-comment">; Training pass complete for layer_id. No inference was blocked. Next INFER_START sees updated weights.</span>
+</div>
+
+<div class="asm-blank"></div>
+
+<!-- ══════════ ENCODING REFERENCE ══════════ -->
+<div class="asm-section-header">
+  <span class="fn-name" style="color:var(--muted)">── Encoding Reference ──</span>
+  <span class="fn-desc">How to manually decode any HELIX-64 instruction word</span>
+</div>
+
+<div style="padding: 20px; font-family: var(--mono); font-size: 11px; color: var(--muted); line-height: 2; max-width: 900px;">
+  <div style="color:var(--text); margin-bottom:12px; font-size:12px;">
+    Example: decode <span style="color:var(--c-hextext); filter:brightness(1.8)">0x17C6000C</span>
+    = <span style="color:#aaa">SHLI SP, SP, 12</span>
+  </div>
+  <div style="color:var(--dim); filter:brightness(2)">
+    Binary: <span style="color:var(--c-alu)">0001</span> <span style="color:var(--c-mem)">0111</span> <span style="color:#d4b870">11000</span> <span style="color:#d4b870">11000</span> <span style="color:var(--c-atomic)">00 0000 0000 1100</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--c-alu)">Maj=0x1</span>  <span style="color:var(--c-mem)">Min=0x7</span>  <span style="color:#d4b870">Rd=24(SP)</span>  <span style="color:#d4b870">Rs1=24(SP)</span>  <span style="color:var(--c-atomic)">Imm=12</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--c-alu)">[ALU-I]</span>   <span style="color:var(--c-mem)">[SHL]</span>    = shift SP left by 12 positions
+  </div>
+  <br>
+  <div style="color:var(--dim); filter:brightness(2)">
+    Example: decode <span style="color:var(--c-hextext); filter:brightness(1.8)">0x75 20 C4 00</span>
+    = <span style="color:#aaa">AMOCAS R4, R3, [R2]</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--c-atomic)">Maj=0x7</span>  <span style="color:var(--c-atomic)">Min=0x5(CAS)</span>  <span style="color:#d4b870">Rd=4 Rs1=3 Rs2=2</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--c-atomic)">[ATOMIC]</span>  [AMOCAS]  mem[R2]: expected R3 → write R4, R4←old
+  </div>
+</div>
+
+<!-- status bar -->
+<div style="padding: 8px 20px; border-top: 1px solid var(--border); font-family:var(--mono); font-size:10px; color:var(--dim); display:flex; gap:24px; filter:brightness(1.8);">
+  <span>HELIX-64 ISA v4.0</span>
+  <span>241 instructions shown</span>
+  <span>964 bytes of kernel machine code</span>
+  <span>32-bit instr word · 64-bit data path</span>
+  <span>15 kernel primitive functions</span>
+  <span style="color:var(--c-alu)">UPPER ext: LUI/AUIPC</span>
+  <span style="color:var(--c-graph)">GRAPH ext: 12 ops</span>
+  <span style="color:var(--c-ai)">AI ext: 16 ops · NRF/TRF · Preemptible STEP</span>
+  <span style="color:var(--c-dist)">DIST ext: 10 ops · DNRF · Versioned Shards</span>
+  <span style="color:var(--c-cap)">CAP ext: sealed 64-bit tokens · domain+perm+gen</span>
+</div>
+
+</div><!-- /listing -->
+</div><!-- /body-grid -->
+
+<!-- ─── DECODE PANEL (fixed bottom bar) ─── -->
+<div class="decode-panel" id="decodePanel">
+  <div class="dp-group"><div class="dp-label">ADDR</div><div class="dp-val">—</div></div>
+  <div class="dp-group"><div class="dp-label">MNEMONIC</div><div class="dp-val">hover a row</div></div>
+  <div class="dp-group"><div class="dp-label">TYPE</div><div class="dp-val">—</div></div>
+</div>
+
+</div><!-- /page -->
+
+<script>
+  // ═══════════════════════════════════════════════════════════════
+  //  HELIX-64 v4.0 — Enhanced Disassembler JS
+  //  Features: decode panel, keyboard nav, search/filter, copy,
+  //            live task-dependency graph (incl. dist nodes),
+  //            DIST/CAP instruction type support
+  // ═══════════════════════════════════════════════════════════════
+
+  const rows = Array.from(document.querySelectorAll('.asm-row'));
+  let focusIdx = -1;
+  let searchMatches = [];
+
+  // ─── TYPE COLOR MAP ───────────────────────────────────────────
+  const typeColor = {
+    't-alu':    'var(--c-alu)',
+    't-mem':    'var(--c-mem)',
+    't-branch': 'var(--c-branch)',
+    't-sys':    'var(--c-sys)',
+    't-atomic': 'var(--c-atomic)',
+    't-cache':  'var(--c-cache)',
+    't-graph':  'var(--c-graph)',
+    't-ai':     'var(--c-ai)',
+    't-dist':   'var(--c-dist)',
+    't-cap':    'var(--c-cap)',
+  };
+  const typeLabel = {
+    't-alu':'ALU','t-mem':'MEM','t-branch':'BR','t-sys':'SYS',
+    't-atomic':'ATOM','t-cache':'TLB','t-graph':'GRAPH','t-ai':'AI',
+    't-dist':'DIST','t-cap':'CAP',
+  };
+
+  // ─── DECODE PANEL ─────────────────────────────────────────────
+  const panel = document.getElementById('decodePanel');
+  function makeDpGroup(label, val, extra='') {
+    return `<div class="dp-group">
+      <div class="dp-label">${label}</div>
+      <div class="dp-val">${val}</div>
+      ${extra ? `<div class="dp-bits">${extra}</div>` : ''}
+    </div>`;
+  }
+  function updateDecodePanel(row) {
+    if (!panel || !row) return;
+    const addr  = row.querySelector('.asm-addr')?.textContent.trim() || '—';
+    const bytes = row.querySelector('.asm-bytes')?.textContent.trim() || '—';
+    const mn    = row.querySelector('.mn')?.textContent.trim() || '—';
+    const comment = row.querySelector('.asm-comment')?.textContent.replace(/^;\s*/,'').trim() || '';
+    const mnemEl = row.querySelector('.asm-mnemonic');
+    let iType = '', iLabel = '', iColor = 'var(--text)';
+    if (mnemEl) {
+      for (const [k,v] of Object.entries(typeColor)) {
+        if (mnemEl.classList.contains(k)) { iType=k; iLabel=typeLabel[k]; iColor=v; break; }
+      }
+    }
+    // parse hex word
+    const hexWord = bytes.replace(/\s+/g,'');
+    let word = parseInt(hexWord, 16);
+    const maj  = (word >>> 28) & 0xF;
+    const min_ = (word >>> 24) & 0xF;
+    const rd   = (word >>> 19) & 0x1F;
+    const rs1  = (word >>> 14) & 0x1F;
+    const rs2  = (word >>>  9) & 0x1F;
+    const imm14= word & 0x3FFF;
+    const binStr = word.toString(2).padStart(32,'0').replace(/(.{4})/g,'$1 ').trim();
+    panel.innerHTML =
+      makeDpGroup('ADDR', addr) +
+      makeDpGroup('HEX', bytes, binStr) +
+      makeDpGroup('MNEMONIC', `<span style="color:${iColor}">${mn}</span>`) +
+      makeDpGroup('Maj', `0x${maj.toString(16).toUpperCase()}`) +
+      makeDpGroup('Min', `0x${min_.toString(16).toUpperCase()}`) +
+      makeDpGroup('Rd', `R${rd}`) +
+      makeDpGroup('Rs1/Rs2', `R${rs1}·R${rs2}`) +
+      makeDpGroup('Imm/Aux', `0x${imm14.toString(16).toUpperCase()}`) +
+      (iLabel ? `<div class="dp-group"><div class="dp-label">TYPE</div><div class="dp-val"><span class="dp-type-badge" style="color:${iColor};border-color:${iColor}">${iLabel}</span></div></div>` : '') +
+      (comment ? `<div class="dp-group" style="flex:1;min-width:200px"><div class="dp-label">DESCRIPTION</div><div class="dp-val" style="font-size:10px;color:var(--muted);white-space:normal">${comment}</div></div>` : '');
+  }
+
+  // ─── ROW CLICK / HOVER ────────────────────────────────────────
+  rows.forEach((row, i) => {
+    row.tabIndex = -1;
+    row.addEventListener('mouseenter', () => updateDecodePanel(row));
+    row.addEventListener('click', () => {
+      rows.forEach(r => r.classList.remove('active','focused'));
+      row.classList.add('active');
+      focusIdx = i;
+      updateDecodePanel(row);
+    });
+    row.addEventListener('dblclick', () => {
+      const bytes = row.querySelector('.asm-bytes')?.textContent.trim() || '';
+      navigator.clipboard?.writeText(bytes).then(() => showToast('Hex bytes copied!')).catch(()=>{});
+    });
+  });
+
+  // ─── COPY TOAST ───────────────────────────────────────────────
+  const toast = document.createElement('div');
+  toast.className = 'copy-toast';
+  document.body.appendChild(toast);
+  function showToast(msg) {
+    toast.textContent = msg; toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  // ─── KEYBOARD NAVIGATION ──────────────────────────────────────
+  const listing = document.querySelector('.listing');
+  function scrollToCenter(el) {
+    // getBoundingClientRect gives actual rendered position relative to viewport
+    const elRect   = el.getBoundingClientRect();
+    const listRect = listing.getBoundingClientRect();
+    // current offset of el within listing's scroll area
+    const elOffsetInList = elRect.top - listRect.top + listing.scrollTop;
+    const listH = listing.clientHeight;
+    listing.scrollTo({ top: elOffsetInList - (listH / 2) + (elRect.height / 2), behavior: 'smooth' });
+  }
+  function focusRow(idx) {
+    if (idx < 0 || idx >= rows.length) return;
+    rows.forEach(r => r.classList.remove('focused'));
+    focusIdx = idx;
+    rows[focusIdx].classList.add('focused');
+    scrollToCenter(rows[focusIdx]);
+    updateDecodePanel(rows[focusIdx]);
+  }
+  // ─── SEARCH / FILTER ──────────────────────────────────────────
+  const searchBox = document.getElementById('searchBox');
+  const searchCount = document.getElementById('searchCount');
+
+  document.addEventListener('keydown', e => {
+    if (e.key === '/') { e.preventDefault(); searchBox.focus(); return; }
+    if (e.key === 'Escape') { searchBox.value=''; handleSearch(''); searchBox.blur(); return; }
+    if (document.activeElement === searchBox) return;
+    if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); focusRow(focusIdx < 0 ? 0 : Math.min(focusIdx+1, rows.length-1)); }
+    if (e.key === 'k' || e.key === 'ArrowUp')   { e.preventDefault(); focusRow(Math.max(focusIdx-1, 0)); }
+    if (e.key === 'Enter' && focusIdx >= 0) scrollToCenter(rows[focusIdx]);
+    if (e.key === 'n' && searchMatches.length) {
+      const cur = searchMatches.findIndex(r => rows.indexOf(r) === focusIdx);
+      const next = searchMatches[(cur+1) % searchMatches.length];
+      focusRow(rows.indexOf(next));
+    }
+  });
+  function handleSearch(q) {
+    rows.forEach(r => r.classList.remove('search-match'));
+    searchMatches = [];
+    if (!q) { searchCount.textContent=''; return; }
+    const lq = q.toLowerCase();
+    rows.forEach(r => {
+      const text = r.textContent.toLowerCase();
+      if (text.includes(lq)) {
+        r.classList.add('search-match');
+        searchMatches.push(r);
+      }
+    });
+    searchCount.textContent = `${searchMatches.length} match${searchMatches.length!==1?'es':''}`;
+    if (searchMatches.length) focusRow(rows.indexOf(searchMatches[0]));
+  }
+  searchBox.addEventListener('input', e => handleSearch(e.target.value));
+  searchBox.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && searchMatches.length) {
+      const cur = searchMatches.findIndex(r => rows.indexOf(r) === focusIdx);
+      const next = searchMatches[(cur+1) % searchMatches.length];
+      focusRow(rows.indexOf(next));
+    }
+    if (e.key === 'Escape') { searchBox.value=''; handleSearch(''); searchBox.blur(); }
+  });
+
+  // ─── SMOOTH SCROLL FOR NAV ────────────────────────────────────
+  document.querySelectorAll('.nav-list a').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) scrollToCenter(el);
+    });
+  });
+
+  // ─── LIVE TASK DEPENDENCY GRAPH ───────────────────────────────
+  const canvas = document.getElementById('taskGraph');
+  const ctx2d = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = rect.width  * devicePixelRatio;
+    canvas.height = rect.height * devicePixelRatio;
+    ctx2d.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', () => { resizeCanvas(); drawGraph(); });
+
+  // graph nodes
+  const nodes = [
+    { id:0, label:'_kernel_entry', x:0.12, y:0.50, color:'#5b8bdf', type:'kernel' },
+    { id:1, label:'_irq_handler',  x:0.30, y:0.15, color:'#3dbfa0', type:'io'     },
+    { id:2, label:'_ctx_switch',   x:0.48, y:0.50, color:'#5b8bdf', type:'kernel' },
+    { id:3, label:'_page_fault',   x:0.30, y:0.82, color:'#5b8bdf', type:'kernel' },
+    { id:4, label:'_syscall_disp', x:0.64, y:0.25, color:'#5b8bdf', type:'kernel' },
+    { id:5, label:'_graph_sched',  x:0.64, y:0.65, color:'#3ec8e8', type:'graph'  },
+    { id:6, label:'_ai_dispatch',  x:0.82, y:0.12, color:'#c45db8', type:'ai'     },
+    { id:7, label:'_neuron_fwd',   x:0.82, y:0.45, color:'#c45db8', type:'ai'     },
+    { id:8, label:'_alloc_page',   x:0.82, y:0.78, color:'#3dbfa0', type:'io'     },
+    { id:9, label:'_dist_fetch',   x:0.50, y:0.88, color:'#4a8a55', type:'dist'   },
+    { id:10,label:'_ver_mgr',      x:0.70, y:0.88, color:'#4a8a55', type:'dist'   },
+    { id:11,label:'_shard_train',  x:0.90, y:0.88, color:'#4a8a55', type:'dist'   },
+  ];
+  const edges = [
+    [0,1],[0,2],[0,3],[0,4],[0,5],
+    [2,4],[2,5],[4,5],[4,6],[5,8],[6,7],[7,6],
+    [5,9],[9,10],[10,7],[3,9],[10,11],[11,7],
+  ];
+
+  // animated pulse
+  const activeEdge = { progress:0 };
+  const edgeSeq = edges.slice();
+  let edgePtr = 0;
+
+  function drawGraph() {
+    const r = canvas.getBoundingClientRect();
+    const w = r.width, h = r.height;
+    ctx2d.clearRect(0,0,w,h);
+
+    // edges
+    ctx2d.lineWidth = 1;
+    edges.forEach(([a,b]) => {
+      const na = nodes[a], nb = nodes[b];
+      const ax = na.x*w, ay = na.y*h;
+      const bx = nb.x*w, by = nb.y*h;
+      ctx2d.beginPath();
+      ctx2d.moveTo(ax, ay);
+      ctx2d.lineTo(bx, by);
+      ctx2d.strokeStyle = 'rgba(60,70,100,0.9)';
+      ctx2d.stroke();
+      // arrowhead
+      const angle = Math.atan2(by-ay, bx-ax);
+      const ar = 5, nx2 = bx - Math.cos(angle)*8, ny2 = by - Math.sin(angle)*8;
+      ctx2d.beginPath();
+      ctx2d.moveTo(nx2, ny2);
+      ctx2d.lineTo(nx2 - ar*Math.cos(angle-0.4), ny2 - ar*Math.sin(angle-0.4));
+      ctx2d.lineTo(nx2 - ar*Math.cos(angle+0.4), ny2 - ar*Math.sin(angle+0.4));
+      ctx2d.closePath();
+      ctx2d.fillStyle = 'rgba(80,100,160,0.8)';
+      ctx2d.fill();
+    });
+
+    // animated data-flow pulse on active edge
+    const ae = edgeSeq[edgePtr % edgeSeq.length];
+    const na = nodes[ae[0]], nb = nodes[ae[1]];
+    const ax = na.x*w, ay = na.y*h;
+    const bx = nb.x*w, by = nb.y*h;
+    const t = activeEdge.progress;
+    const px = ax + (bx-ax)*t, py = ay + (by-ay)*t;
+    const grad = ctx2d.createRadialGradient(px,py,0,px,py,5);
+    grad.addColorStop(0,'rgba(255,255,255,0.9)');
+    grad.addColorStop(1,'rgba(0,212,255,0)');
+    ctx2d.beginPath();
+    ctx2d.arc(px,py,4,0,Math.PI*2);
+    ctx2d.fillStyle = grad;
+    ctx2d.fill();
+
+    // nodes
+    nodes.forEach(n => {
+      const nx = n.x*w, ny = n.y*h;
+      // glow
+      const glow = ctx2d.createRadialGradient(nx,ny,2,nx,ny,10);
+      glow.addColorStop(0, n.color + 'aa');
+      glow.addColorStop(1, n.color + '00');
+      ctx2d.beginPath(); ctx2d.arc(nx,ny,10,0,Math.PI*2);
+      ctx2d.fillStyle = glow; ctx2d.fill();
+      // core dot
+      ctx2d.beginPath(); ctx2d.arc(nx,ny,4,0,Math.PI*2);
+      ctx2d.fillStyle = n.color; ctx2d.fill();
+      // label
+      ctx2d.font = '8px JetBrains Mono, monospace';
+      ctx2d.fillStyle = 'rgba(180,190,220,0.85)';
+      ctx2d.textAlign = nx < w*0.5 ? 'left' : 'right';
+      const lx = nx < w*0.5 ? nx+8 : nx-8;
+      ctx2d.fillText(n.label, lx, ny+3);
+    });
+  }
+
+  function animGraph() {
+    activeEdge.progress += 0.018;
+    if (activeEdge.progress > 1) {
+      activeEdge.progress = 0;
+      edgePtr = (edgePtr + 1) % edgeSeq.length;
+    }
+    drawGraph();
+    requestAnimationFrame(animGraph);
+  }
+  animGraph();
+
+  // initialize decode panel with first row
+  if (panel && rows.length) updateDecodePanel(rows[0]);
+</script>
+</body>
+</html>
