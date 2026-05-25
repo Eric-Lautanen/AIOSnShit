@@ -20,7 +20,7 @@ When you ask for a text editor, the AI doesn't "open" one—it **invents and com
 
 ### 🛠️ What's Inside this Repository?
 
-This repository contains **`newOSlang.html`**—a highly advanced, interactive technical disassembler dashboard showcasing the **HELIX-64 Machine Language Assembly (v4.0)**. 
+This repository contains **`index.html`**—a highly advanced, interactive technical disassembler dashboard showcasing the **HELIX-64 Machine Language Assembly (v4.0)**. 
 
 #### ✨ Key Features of the Dashboard:
 * 🗂️ **Interactive Microcode Decoder:** Hover over any live instruction line to instantly watch the NPU (Neural Processing Unit) unpack the hex data fields (`Maj`, `Min`, `Rd`, `Rs`).
